@@ -44,6 +44,7 @@ pub mod script;
 pub mod semfs;
 pub mod serial;
 pub mod signal;
+pub mod snake;
 pub mod slab;
 pub mod smp;
 pub mod shell;

@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -260,6 +260,7 @@ pub fn dispatch(cmd: &str) {
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
             println!("  demo       - run full system demo");
+            println!("  snake      - play Snake game!");
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
@@ -1187,6 +1188,12 @@ pub fn dispatch(cmd: &str) {
         }
 
         "demo" => demo::run(),
+        "snake" => {
+            snake::run();
+            // Restore shell screen after game
+            crate::vga::print_banner();
+            println!("Type 'help' for commands.");
+        }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {
             // Try AI natural language interpretation
