@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -218,6 +218,8 @@ pub fn dispatch(cmd: &str) {
             println!("  heal       - AI self-healing diagnosis");
             println!("  agents     - list AI agents");
             println!("  ask <a> <m> - send message to an agent");
+            println!("  chat       - interactive AI conversation");
+            println!("  fortune    - random tip or fact");
             println!("  aistatus   - AI subsystem status");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
@@ -1324,6 +1326,16 @@ pub fn dispatch(cmd: &str) {
             } else {
                 println!("Usage: ask <agent> <message>");
             }
+        }
+        "chat" => {
+            chat::enter();
+            // Chat runs until user types 'exit', handled by keyboard routing
+            while chat::is_chatting() {
+                x86_64::instructions::hlt();
+            }
+        }
+        "fortune" => {
+            println!("\x1b[33m  {}\x1b[0m", fortune::random());
         }
         "aistatus" => {
             println!("AI Proxy:   {}", ai_proxy::status());
