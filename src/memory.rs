@@ -12,6 +12,9 @@ use spin::Mutex;
 /// Global frame allocator, initialized during boot.
 static FRAME_ALLOCATOR: Mutex<Option<BootInfoFrameAllocator>> = Mutex::new(None);
 
+/// Saved reference to the memory map for display.
+static MEMORY_MAP: Mutex<Option<&'static MemoryMap>> = Mutex::new(None);
+
 /// Physical memory offset used by the bootloader's identity mapping.
 static mut PHYS_MEM_OFFSET: u64 = 0;
 
@@ -24,6 +27,7 @@ pub unsafe fn init(
     memory_map: &'static MemoryMap,
 ) -> OffsetPageTable<'static> {
     unsafe { PHYS_MEM_OFFSET = physical_memory_offset.as_u64() };
+    *MEMORY_MAP.lock() = Some(memory_map);
 
     let frame_alloc = unsafe { BootInfoFrameAllocator::init(memory_map) };
     *FRAME_ALLOCATOR.lock() = Some(frame_alloc);
@@ -168,4 +172,100 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
             self.skip_to_usable();
         }
     }
+}
+
+// --- Memory statistics ---
+
+pub struct MemoryStats {
+    pub total_usable_bytes: u64,
+    pub allocated_frames: u64,
+    pub total_regions: usize,
+}
+
+/// Get physical memory statistics.
+pub fn stats() -> MemoryStats {
+    let map_lock = MEMORY_MAP.lock();
+    let fa_lock = FRAME_ALLOCATOR.lock();
+
+    let (total_usable, total_regions) = if let Some(map) = *map_lock {
+        let usable: u64 = map
+            .iter()
+            .filter(|r| r.region_type == MemoryRegionType::Usable)
+            .map(|r| r.range.end_addr() - r.range.start_addr())
+            .sum();
+        (usable, map.len())
+    } else {
+        (0, 0)
+    };
+
+    // Count allocated frames based on allocator position
+    let allocated = if let Some(fa) = fa_lock.as_ref() {
+        // Sum all frames from regions before current, plus offset in current
+        let map = fa.memory_map;
+        let mut count: u64 = 0;
+        for (i, region) in map.iter().enumerate() {
+            if region.region_type != MemoryRegionType::Usable {
+                continue;
+            }
+            let region_size = region.range.end_addr() - region.range.start_addr();
+            if i < fa.region_index {
+                count += region_size / 4096;
+            } else if i == fa.region_index {
+                count += fa.offset_in_region / 4096;
+                break;
+            }
+        }
+        count
+    } else {
+        0
+    };
+
+    MemoryStats {
+        total_usable_bytes: total_usable,
+        allocated_frames: allocated,
+        total_regions,
+    }
+}
+
+/// Memory region info for display.
+pub struct RegionInfo {
+    pub start: u64,
+    pub end: u64,
+    pub kind: &'static str,
+    pub size_kb: u64,
+}
+
+/// Get the bootloader memory map for display.
+pub fn memory_map() -> alloc::vec::Vec<RegionInfo> {
+    let map_lock = MEMORY_MAP.lock();
+    let mut result = alloc::vec::Vec::new();
+
+    if let Some(map) = *map_lock {
+        for region in map.iter() {
+            let kind = match region.region_type {
+                MemoryRegionType::Usable => "usable",
+                MemoryRegionType::InUse => "in use",
+                MemoryRegionType::Reserved => "reserved",
+                MemoryRegionType::AcpiReclaimable => "ACPI",
+                MemoryRegionType::AcpiNvs => "ACPI NVS",
+                MemoryRegionType::BadMemory => "bad",
+                MemoryRegionType::Kernel => "kernel",
+                MemoryRegionType::KernelStack => "kstack",
+                MemoryRegionType::PageTable => "pagetbl",
+                MemoryRegionType::Bootloader => "bootldr",
+                MemoryRegionType::FrameZero => "frame0",
+                MemoryRegionType::Empty => continue,
+                _ => "other",
+            };
+            let size = region.range.end_addr() - region.range.start_addr();
+            result.push(RegionInfo {
+                start: region.range.start_addr(),
+                end: region.range.end_addr(),
+                kind,
+                size_kb: size / 1024,
+            });
+        }
+    }
+
+    result
 }

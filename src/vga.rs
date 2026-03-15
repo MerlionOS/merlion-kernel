@@ -145,10 +145,48 @@ impl Writer {
 
 impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.bytes() {
-            self.write_byte(byte);
+        let bytes = s.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            // Check for ANSI escape: ESC[ ... m
+            if i + 2 < bytes.len() && bytes[i] == 0x1B && bytes[i + 1] == b'[' {
+                // Parse the color code number
+                let start = i + 2;
+                let mut end = start;
+                while end < bytes.len() && bytes[end] != b'm' {
+                    end += 1;
+                }
+                if end < bytes.len() {
+                    let code = core::str::from_utf8(&bytes[start..end]).unwrap_or("0");
+                    self.apply_ansi_color(code);
+                    i = end + 1;
+                    continue;
+                }
+            }
+            self.write_byte(bytes[i]);
+            i += 1;
         }
         Ok(())
+    }
+}
+
+impl Writer {
+    /// Map ANSI SGR color codes to VGA attributes.
+    fn apply_ansi_color(&mut self, code: &str) {
+        match code {
+            "0"  => self.attr = color_attr(Color::LightGray, Color::Black), // reset
+            "1"  => self.attr = (self.attr & 0xF0) | 0x0F, // bold (white fg)
+            "30" => self.attr = (self.attr & 0xF0) | Color::Black as u8,
+            "31" => self.attr = (self.attr & 0xF0) | Color::LightRed as u8,
+            "32" => self.attr = (self.attr & 0xF0) | Color::LightGreen as u8,
+            "33" => self.attr = (self.attr & 0xF0) | Color::Yellow as u8,
+            "34" => self.attr = (self.attr & 0xF0) | Color::LightBlue as u8,
+            "35" => self.attr = (self.attr & 0xF0) | Color::Pink as u8,
+            "36" => self.attr = (self.attr & 0xF0) | Color::LightCyan as u8,
+            "37" => self.attr = (self.attr & 0xF0) | Color::White as u8,
+            "90" => self.attr = (self.attr & 0xF0) | Color::DarkGray as u8,
+            _ => {} // ignore unknown codes
+        }
     }
 }
 

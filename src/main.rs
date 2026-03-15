@@ -4,7 +4,9 @@
 
 extern crate alloc;
 
+mod acpi;
 mod allocator;
+mod driver;
 mod gdt;
 mod interrupts;
 mod ipc;
@@ -64,6 +66,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     vfs::init();
     println!("[ok] VFS mounted");
     serial_println!("[ok] VFS initialized");
+
+    driver::init();
+    println!("[ok] Drivers registered");
+    serial_println!("[ok] Drivers registered");
 
     klog_println!("Kernel initialization complete.");
     println!();

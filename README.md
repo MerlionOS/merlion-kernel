@@ -5,17 +5,17 @@ A Singapore-inspired hobby operating system written in Rust for x86_64.
 ## Prerequisites
 
 - **Rust nightly** (managed automatically via `rust-toolchain.toml`)
-- **rust-src** component: `rustup component add rust-src --toolchain nightly`
-- **llvm-tools** component: `rustup component add llvm-tools --toolchain nightly`
+- **rust-src**: `rustup component add rust-src --toolchain nightly`
+- **llvm-tools**: `rustup component add llvm-tools --toolchain nightly`
 - **cargo-bootimage**: `cargo install bootimage`
 - **QEMU**: `brew install qemu` (macOS) or `apt install qemu-system-x86` (Linux)
 
 ## Build & Run
 
 ```sh
-make build     # build bootable image
-make run       # boot in QEMU (VGA + serial)
-make run-serial # headless (serial only)
+make build       # build bootable image
+make run         # boot in QEMU (VGA + serial)
+make run-serial  # headless (serial only)
 ```
 
 ## Shell Commands
@@ -44,10 +44,14 @@ make run-serial # headless (serial only)
 | `info`     | System information |
 | `uptime`   | Time since boot |
 | `heap`     | Heap allocator stats |
+| `memmap`   | Physical memory map (color-coded) |
+| `drivers`  | List kernel drivers |
 | `pipe`     | IPC producer/consumer demo |
 | `channels` | List IPC channels |
 | `dmesg`    | Kernel log buffer |
 | `clear`    | Clear screen |
+| `shutdown` | Power off (ACPI) |
+| `reboot`   | Restart (keyboard controller reset) |
 | `panic`    | Trigger test panic |
 
 ## Virtual Filesystem
@@ -81,35 +85,30 @@ make run-serial # headless (serial only)
 ```
 src/
 ├── main.rs          # Kernel entry point
-├── vga.rs           # VGA text console
-├── serial.rs        # UART serial driver
-├── gdt.rs           # GDT + TSS
-├── interrupts.rs    # IDT, exceptions, IRQs, syscall trampoline
-├── keyboard.rs      # PS/2 scancode decoder
-├── memory.rs        # Page tables, global frame allocator
+├── acpi.rs          # ACPI shutdown and reboot
 ├── allocator.rs     # Kernel heap
-├── timer.rs         # PIT tick counter
+├── driver.rs        # Kernel driver framework
+├── gdt.rs           # GDT + TSS
+├── interrupts.rs    # IDT, exceptions, IRQs, syscall
+├── ipc.rs           # IPC channels
+├── keyboard.rs      # PS/2 scancode decoder
 ├── log.rs           # Kernel log ring buffer
-├── task.rs          # Task management + context switching
-├── syscall.rs       # Syscall dispatch (7 syscalls)
+├── memory.rs        # Page tables, frame allocator, memory map
 ├── process.rs       # User processes + page tables
-├── ipc.rs           # Inter-process communication channels
+├── serial.rs        # UART serial driver
+├── shell.rs         # Interactive kernel shell
+├── syscall.rs       # Syscall dispatch
+├── task.rs          # Task management + context switching
+├── timer.rs         # PIT tick counter
 ├── vfs.rs           # Virtual filesystem
-└── shell.rs         # Interactive kernel shell
+└── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 9)
+## Current Status (Phase 10)
 
-- Virtual filesystem with /dev, /proc, and /tmp
-- Proc files: uptime, meminfo, tasks (generated dynamically)
-- Device nodes: /dev/null, /dev/serial
-- File operations: ls, cat, write, rm
-- Task kill by PID
-- 16 source files, ~1800 lines of Rust
-
-## Next Milestone (Phase 10)
-
-- ELF binary loader
-- Kernel module / driver interface
-- ACPI/shutdown support
-- Improved VGA console (colors, escape sequences)
+- ACPI shutdown and keyboard controller reboot
+- VGA ANSI color escape sequences (\x1b[31m...\x1b[0m)
+- Physical memory map display with color-coded regions
+- Kernel driver registration framework
+- Memory statistics (usable RAM, allocated frames)
+- 18 source files, ~2400 lines of Rust

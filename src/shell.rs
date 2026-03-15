@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -78,19 +78,25 @@ fn dispatch(cmd: &str) {
             println!("  info       - system information");
             println!("  uptime     - time since boot");
             println!("  heap       - heap stats");
+            println!("  memmap     - physical memory map");
+            println!("  drivers    - list kernel drivers");
             println!("  pipe       - IPC demo");
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
             println!("  clear      - clear screen");
+            println!("  shutdown   - power off");
+            println!("  reboot     - restart");
             println!("  panic      - trigger panic");
         }
         "info" => {
-            println!("MerlionOS v0.1.0");
+            let mem = memory::stats();
+            println!("\x1b[1mMerlionOS v0.1.0\x1b[0m");
             println!("Architecture: x86_64");
+            println!("Physical RAM: {} KiB usable", mem.total_usable_bytes / 1024);
             println!("Heap size:    {}K", allocator::HEAP_SIZE / 1024);
             println!("PIT rate:     {} Hz", timer::PIT_FREQUENCY_HZ);
+            println!("Drivers:      {}", driver::list().len());
             println!("Max tasks:    8");
-            println!("VFS inodes:   64 max");
         }
         "uptime" => {
             let (h, m, s) = timer::uptime_hms();
@@ -183,7 +189,38 @@ fn dispatch(cmd: &str) {
             }
         }
 
-        // --- Other ---
+        // --- System ---
+        "memmap" => {
+            let stats = memory::stats();
+            println!("Physical memory: {} KiB usable, {} frames allocated, {} regions",
+                stats.total_usable_bytes / 1024, stats.allocated_frames, stats.total_regions);
+            println!();
+            println!("  \x1b[1mSTART            END              SIZE      TYPE\x1b[0m");
+            for r in memory::memory_map() {
+                let color = match r.kind {
+                    "usable" => "\x1b[32m",  // green
+                    "kernel" | "kstack" | "pagetbl" => "\x1b[33m", // yellow
+                    "reserved" | "ACPI" => "\x1b[90m", // gray
+                    _ => "\x1b[0m",
+                };
+                println!("  {}{:#016x}  {:#016x}  {:>6}K  {}\x1b[0m",
+                    color, r.start, r.end, r.size_kb, r.kind);
+            }
+        }
+        "drivers" => {
+            println!("  \x1b[1mNAME        KIND      STATUS\x1b[0m");
+            for (name, kind, status) in driver::list() {
+                println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
+            }
+        }
+        "shutdown" => {
+            println!("\x1b[33mShutting down...\x1b[0m");
+            acpi::shutdown();
+        }
+        "reboot" => {
+            println!("\x1b[33mRebooting...\x1b[0m");
+            acpi::reboot();
+        }
         "pipe" => run_ipc_demo(),
         "channels" => {
             let chs = ipc::list();
