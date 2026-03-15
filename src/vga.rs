@@ -263,11 +263,16 @@ pub fn _print(args: fmt::Arguments) {
         let mut buf = alloc::string::String::new();
         let _ = buf.write_fmt(args);
         crate::pipe_exec::try_capture(&buf);
-        // Don't print to VGA during pipe capture
         return;
     }
 
     interrupts::without_interrupts(|| {
-        WRITER.lock().write_fmt(args).unwrap();
+        // Auto-detect: use framebuffer console if active, else VGA text mode
+        let fb_active = crate::fbconsole::CONSOLE.lock().is_active();
+        if fb_active {
+            crate::fbconsole::CONSOLE.lock().write_fmt(args).unwrap();
+        } else {
+            WRITER.lock().write_fmt(args).unwrap();
+        }
     });
 }

@@ -47,6 +47,7 @@ pub mod ipc;
 pub mod kconfig;
 pub mod keyboard;
 pub mod ksyms;
+pub mod limine_entry;
 pub mod locks;
 pub mod log;
 pub mod login;
