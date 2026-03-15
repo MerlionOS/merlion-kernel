@@ -48,6 +48,7 @@ pub mod kconfig;
 pub mod keyboard;
 pub mod ksyms;
 pub mod limine_entry;
+pub mod limine_init;
 pub mod locks;
 pub mod log;
 pub mod login;
