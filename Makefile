@@ -23,6 +23,15 @@ run-fullscreen:
 		-serial stdio \
 		-full-screen
 
+# Run with a virtio disk + network
+run-full: disk
+	qemu-system-x86_64 \
+		-drive format=raw,file=$(KERNEL_BIN) \
+		-drive file=$(DISK_IMG),format=raw,if=virtio \
+		-netdev user,id=n0 \
+		-device virtio-net-pci,netdev=n0 \
+		-serial stdio
+
 # Run with a virtio disk attached
 run-disk: disk
 	qemu-system-x86_64 \

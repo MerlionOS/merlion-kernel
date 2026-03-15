@@ -226,6 +226,8 @@ pub fn dispatch(cmd: &str) {
             println!("  recv       - receive queued packets");
             println!("  ping <ip>  - ping an address");
             println!("  arp        - ARP table");
+            println!("  arpreq <ip> - send real ARP request");
+            println!("  rawping <ip> - send real ICMP ping");
             println!("  tcpconn <ip:port> - TCP connect");
             println!("  tcpsend <id> <d> - TCP send");
             println!("  tcprecv <id> - TCP receive");
@@ -702,6 +704,34 @@ pub fn dispatch(cmd: &str) {
                 for (ip, mac) in entries {
                     println!("  {:<16} {}", ip, mac);
                 }
+            }
+        }
+        cmd if cmd.starts_with("arpreq ") => {
+            let target = cmd[7..].trim();
+            if let Some(ip) = net::resolve(target) {
+                match virtio_net::send_arp_request(ip) {
+                    Ok(()) => println!("ARP request sent for {}", ip),
+                    Err(e) => println!("arpreq: {}", e),
+                }
+            } else {
+                println!("Cannot resolve: {}", target);
+            }
+        }
+        cmd if cmd.starts_with("rawping ") => {
+            let target = cmd[8..].trim();
+            if let Some(ip) = net::resolve(target) {
+                for seq in 0..3u16 {
+                    match virtio_net::send_ping(ip, seq) {
+                        Ok(()) => println!("ICMP echo request → {} seq={}", ip, seq),
+                        Err(e) => { println!("rawping: {}", e); break; }
+                    }
+                    // Small delay between pings
+                    let pause = crate::timer::ticks() + 50;
+                    while crate::timer::ticks() < pause { x86_64::instructions::hlt(); }
+                }
+                println!("3 packets sent to {}", ip);
+            } else {
+                println!("Cannot resolve: {}", target);
             }
         }
         cmd if cmd.starts_with("tcpconn ") => {
