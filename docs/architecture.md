@@ -1,5 +1,7 @@
 # MerlionOS Architecture
 
+> **Born for AI. Built by AI.** — 生于AI，成于AI
+
 ## Kernel Design: Monolithic Kernel
 
 MerlionOS uses a **monolithic kernel** architecture, the same family as Linux and BSD. All kernel subsystems — scheduler, memory manager, VFS, drivers, IPC, networking — are compiled into a single binary and run in Ring 0 (kernel mode).

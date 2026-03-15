@@ -2,7 +2,11 @@
 
 ## Project Overview
 
-MerlionOS is a Singapore-inspired hobby operating system kernel written in Rust for x86_64. It boots in QEMU, runs a shell with 20+ commands, supports preemptive multitasking, user-mode processes, IPC, a virtual filesystem, and ACPI power management.
+MerlionOS is a Singapore-inspired AI-native hobby operating system kernel written in Rust for x86_64.
+
+> **Born for AI. Built by AI.** — 生于AI，成于AI
+
+It boots in QEMU, runs a shell with 65+ commands, supports preemptive multitasking, user-mode processes, IPC, VFS, networking, graphics, and ACPI power management. 39 source modules, ~6200 lines of Rust.
 
 ## Build & Run
 

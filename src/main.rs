@@ -10,8 +10,9 @@ entry_point!(kernel_main);
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     serial::SERIAL1.lock().init();
-    serial_println!("MerlionOS v0.1.0 booting...");
-    klog_println!("MerlionOS v0.1.0 booting...");
+    serial_println!("MerlionOS v1.0.0 — Born for AI. Built by AI.");
+    serial_println!("Booting...");
+    klog_println!("MerlionOS v1.0.0 booting...");
 
     vga::print_banner();
 

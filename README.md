@@ -1,6 +1,10 @@
 # MerlionOS
 
-A Singapore-inspired hobby operating system written in Rust for x86_64.
+> **Born for AI. Built by AI.** — 生于AI，成于AI
+
+[中文文档](README_CN.md)
+
+A Singapore-inspired AI-native hobby operating system written in Rust for x86_64.
 
 ## Prerequisites
 

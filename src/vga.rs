@@ -231,10 +231,10 @@ pub fn print_banner() {
     w.set_attr(gray);
     let _ = w.write_str("  ─────────────────────────────────────────────────────────────────\n");
 
-    w.set_attr(yellow);
-    let _ = w.write_str("       A Singapore-inspired hobby OS");
     w.set_attr(white);
-    let _ = w.write_str("       x86_64 | Rust | QEMU\n");
+    let _ = w.write_str("          Born for AI. Built by AI.\n");
+    w.set_attr(gray);
+    let _ = w.write_str("          x86_64 | Rust | QEMU\n");
 
     w.set_attr(default);
     let _ = w.write_str("\n");

@@ -218,7 +218,7 @@ fn dispatch(cmd: &str) {
         }
         "info" => {
             let mem = memory::stats();
-            println!("\x1b[1mMerlionOS v0.1.0\x1b[0m");
+            println!("\x1b[1mMerlionOS v1.0.0\x1b[0m");
             println!("Architecture: x86_64");
             println!("Physical RAM: {} KiB usable", mem.total_usable_bytes / 1024);
             println!("Heap size:    {}K", allocator::HEAP_SIZE / 1024);
@@ -843,8 +843,8 @@ fn neofetch() {
     // Logo on the left, info on the right
     println!("\x1b[36m  ▄▄▄      ▄▄▄       \x1b[0m {}@{}", user, host);
     println!("\x1b[36m  ████▄  ▄████       \x1b[0m ─────────────────────");
-    println!("\x1b[36m  ███▀████▀███       \x1b[0m \x1b[36mOS\x1b[0m:      MerlionOS 0.2.0");
-    println!("\x1b[36m  ███  ▀▀  ███       \x1b[0m \x1b[36mKernel\x1b[0m:  MerlionOS x86_64");
+    println!("\x1b[36m  ███▀████▀███       \x1b[0m \x1b[36mOS\x1b[0m:      MerlionOS 1.0.0");
+    println!("\x1b[36m  ███  ▀▀  ███       \x1b[0m \x1b[36mMotto\x1b[0m:   Born for AI. Built by AI.");
     println!("\x1b[36m  ███      ███       \x1b[0m \x1b[36mCPU\x1b[0m:     {}", features.brand);
     println!("                      \x1b[36mMemory\x1b[0m:  {} KiB / {} KiB",
         mem.allocated_frames * 4, mem.total_usable_bytes / 1024);
