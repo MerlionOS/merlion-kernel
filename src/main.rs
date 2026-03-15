@@ -7,6 +7,7 @@ extern crate alloc;
 mod allocator;
 mod gdt;
 mod interrupts;
+mod ipc;
 mod keyboard;
 mod log;
 mod memory;
@@ -16,7 +17,6 @@ mod shell;
 mod syscall;
 mod task;
 mod timer;
-mod usermode;
 mod vga;
 
 use core::panic::PanicInfo;

@@ -177,6 +177,21 @@ pub fn exit() -> ! {
     loop { x86_64::instructions::hlt(); }
 }
 
+/// Get the current task's slot index.
+pub fn current_slot() -> usize {
+    CURRENT.load(Ordering::SeqCst)
+}
+
+/// Get the current task's PID.
+pub fn current_pid() -> usize {
+    let current = CURRENT.load(Ordering::SeqCst);
+    let tasks = TASKS.lock();
+    match &tasks[current] {
+        TaskSlot::Occupied { pid, .. } => *pid,
+        _ => 0,
+    }
+}
+
 /// Called by the timer to attempt preemptive scheduling.
 pub fn timer_tick() {
     // Only switch if there are other ready tasks
