@@ -108,82 +108,114 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (AI Native OS — Phase G Complete)
+## Current Status (Phase 42)
 
-- **46 source modules, ~7400 lines of Rust**
-- **All 40 kernel phases + 7 AI phases complete**
+- **47 source modules, ~7500 lines of Rust**
+- **42 kernel phases + 7 AI phases complete**
 - **75+ shell commands**
-- Monolithic AI-native kernel: NL shell, LLM proxy, semantic VFS,
-  AI monitor, self-healing, agent framework, concept explainer
+- Monolithic AI-native kernel with natural language shell, LLM proxy,
+  semantic VFS, AI monitoring, self-healing, agent framework
 
 ## Roadmap
 
-### Foundation (Phases 1-10)
+### 1. Foundation (Phases 1-10) ✅
+
+Boot, GDT/IDT, PIT, keyboard, heap, frame allocator, VGA console,
+shell, preemptive multitasking, user-mode ring 3, per-process page tables,
+syscalls, IPC channels, VFS, ACPI shutdown/reboot, driver framework.
+
+### 2. Features (Phases 11-20) ✅
+
+RTC clock, kernel self-tests, framebuffer graphics (160×50),
+PCI bus scan, RAM disk, IPv4/UDP networking, CPUID/SMP detection,
+user-space syscall library, command history, arrow keys, shift,
+environment variables, aliases, neofetch, free, sleep.
+
+### 3. Kernel Evolution (Phases 21-25) ✅
+
+Loadable kernel modules, demand paging, kernel symbol table + backtrace,
+slab allocator (task, ipc_msg, fd, page_info caches).
+
+### 4. Real Hardware (Phases 26-30) ✅
+
+Virtio device discovery, block device abstraction, FAT16-like filesystem (MF16),
+ARP table, ICMP ping, TCP state machine types.
+
+### 5. User Space (Phases 31-35) ✅
+
+File descriptor table (open/read/write/close), stdin/stdout/stderr,
+user-space syscall library, block device integration.
+
+### 6. SMP & Advanced (Phases 36-40) ✅
+
+CPUID/APIC detection, per-CPU state, spinlock vs ticket lock,
+APIC timer calibration, lock demo.
+
+### 7. AI Native OS (Phases A-G) ✅
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 1  | Boot in QEMU, VGA hello, panic handler | Done |
-| 2  | Serial logging, GDT/IDT, PIT timer, exceptions | Done |
-| 3  | Keyboard input, heap allocator, frame allocator | Done |
-| 4  | VGA console + scrolling, shell, `println!` | Done |
-| 5  | Uptime, kernel log, page fault handler, user-mode groundwork | Done |
-| 6  | Preemptive multitasking, context switching, scheduler | Done |
-| 7  | Per-process page tables, syscall ABI, user programs | Done |
-| 8  | IPC channels, concurrent processes, expanded syscalls | Done |
-| 9  | Virtual filesystem (/dev, /proc, /tmp), task kill | Done |
-| 10 | ACPI power management, ANSI colors, driver framework | Done |
+| A | AI Shell: natural language → command (中英文) | Done |
+| B | LLM Proxy: COM2 serial protocol to external LLM | Done |
+| C | Semantic VFS: file tags, search by meaning | Done |
+| D | AI System Monitor: anomaly detection, health check | Done |
+| E | AI Syscalls: infer, classify, auto-tag, explain | Done |
+| F | Self-Healing Kernel: diagnose page fault, OOM, auto-recover | Done |
+| G | Agent Framework: health, greeter, explain agents | Done |
 
-### Features (Phases 11-20)
+### 8. Shell & Scripting (Phases 41-42) ✅
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
-| 12 | Framebuffer graphics, basic drawing primitives | Done |
-| 13 | PCI bus scan, RAM disk, block filesystem | Done |
-| 14 | Networking stack: IPv4, UDP, loopback | Done |
-| 15 | SMP: CPUID, APIC, per-CPU state, `cpuinfo` | Done |
-| 16 | User-space syscall library (ulib) | Done |
-| 17 | Shell: history, arrow keys, shift, echo | Done |
-| 18 | Environment variables, aliases, $VAR expansion | Done |
-| 19 | neofetch, uname, whoami, hostname | Done |
-| 20 | free, sleep, polished shell experience | Done |
+Shell scripting (exec), semicolon chaining, wc, AI-enhanced panic diagnosis.
 
-### Kernel Evolution (Phases 21-25)
+### 9. Hardening & Polish (Phases 43-50) — Planned
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 21 | Loadable kernel modules (dynamic driver registration) | Done |
-| 22 | Demand paging + page fault-driven lazy allocation | Done |
-| 23 | Copy-on-write fork (process creation) | Deferred |
-| 24 | Kernel symbol table + stack trace on panic | Done |
-| 25 | Slab allocator for fixed-size kernel objects | Done |
+| 43 | Guard pages for stack overflow detection | Planned |
+| 44 | Kernel heap hardening (double-free detection) | Planned |
+| 45 | `/proc/self` and per-process /proc entries | Planned |
+| 46 | VFS mount points (mount/umount abstractions) | Planned |
+| 47 | Signal framework (SIGKILL, SIGTERM, SIGSTOP) | Planned |
+| 48 | Job control (fg, bg, jobs, Ctrl+C) | Planned |
+| 49 | Shell pipes: `cmd1 \| cmd2` with in-memory pipe | Planned |
+| 50 | Kernel config system (/etc/merlion.conf) | Planned |
 
-### Real Hardware (Phases 26-30)
-
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 26 | Virtio device discovery + virtqueue types | Done |
-| 27 | Block device abstraction layer | Done |
-| 28 | FAT16-like filesystem (MF16) with cluster chains | Done |
-| 29 | ARP table + ICMP ping simulation | Done |
-| 30 | TCP state machine types (groundwork) | Done |
-
-### User Space (Phases 31-35)
+### 10. Real I/O (Phases 51-55) — Planned
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 31 | ELF types + user-space library (ulib) | Done |
-| 32 | File descriptor table (open, read, write, close) | Done |
-| 33 | POSIX-like fd commands (lsof, open, close) | Done |
-| 34 | stdin/stdout/stderr initialization | Done |
-| 35 | Block device + FAT16 filesystem integration | Done |
+| 51 | Virtio-blk driver (real QEMU disk I/O) | Planned |
+| 52 | Persistent filesystem on virtio-blk | Planned |
+| 53 | Virtio-net driver (real Ethernet frames) | Planned |
+| 54 | ARP + ICMP over real NIC | Planned |
+| 55 | Minimal TCP stack (3-way handshake, data transfer) | Planned |
 
-### SMP & Advanced (Phases 36-40)
+### 11. True User Space (Phases 56-60) — Planned
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 36 | AP boot types + SIPI IPI command format | Done |
-| 37 | Per-CPU state tracking (up to 16 CPUs) | Done |
-| 38 | Spinlock + ticket lock with statistics | Done |
-| 39 | APIC timer calibration + register definitions | Done |
-| 40 | Lock demo (`lockdemo`) + final integration | Done |
+| 56 | ELF binary parser and loader | Planned |
+| 57 | Separate merlion-user crate (cross-compiled) | Planned |
+| 58 | User-space libc: malloc, printf, string ops | Planned |
+| 59 | Init process + multi-user login | Planned |
+| 60 | User-space shell (msh as standalone binary) | Planned |
+
+### 12. AI Integration (Phases 61-65) — Planned
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 61 | Virtio AI device (custom QEMU device for inference) | Planned |
+| 62 | AI-assisted task scheduler (workload prediction) | Planned |
+| 63 | Natural language VFS queries ("find large files") | Planned |
+| 64 | AI-powered `man` pages (explain any command) | Planned |
+| 65 | Conversational system administration agent | Planned |
+
+### 13. Beyond (Phases 66-70) — Planned
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 66 | UEFI boot (replace BIOS bootloader) | Planned |
+| 67 | x86_64 → aarch64 cross-architecture port | Planned |
+| 68 | Framebuffer GUI: window manager, mouse | Planned |
+| 69 | USB HID driver (keyboard/mouse) | Planned |
+| 70 | Self-hosting: compile Rust inside MerlionOS | Planned |
