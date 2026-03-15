@@ -58,6 +58,11 @@ impl FbConsole {
         self.fb.is_some()
     }
 
+    /// Return the underlying framebuffer info (if initialized).
+    pub fn fb(&self) -> Option<FbInfo> {
+        self.fb
+    }
+
     /// Clear the screen.
     pub fn clear(&mut self) {
         let fb = match self.fb { Some(f) => f, None => return };
