@@ -68,6 +68,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     apic_timer::init();
     virtio_blk::init();
     virtio_net::init();
+    ahci::init();
+    xhci::init();
+    e1000e::init();
     semfs::init();
     ai_proxy::init();
     agent::init();

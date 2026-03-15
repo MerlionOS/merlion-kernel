@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, xhci, e1000e, ioapic, http, dhcp};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -286,6 +286,14 @@ pub fn dispatch(cmd: &str) {
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
+            println!("Hardware:");
+            println!("  wget <url> - build HTTP request (TCP pending)");
+            println!("  ifup       - DHCP discover sequence");
+            println!("  dns <host> - resolve hostname");
+            println!("  ahciinfo   - AHCI controller status");
+            println!("  usbdevs    - list USB devices");
+            println!("  ioapicinfo - IOAPIC status");
+            println!("  e1000info  - e1000e NIC status");
         }
         "info" => {
             let mem = memory::stats();
@@ -1390,6 +1398,62 @@ pub fn dispatch(cmd: &str) {
             // Restore shell screen after game
             crate::vga::print_banner();
             println!("Type 'help' for commands.");
+        }
+        _ if cmd.starts_with("wget ") => {
+            let url = cmd[5..].trim();
+            if url.is_empty() {
+                println!("usage: wget <url>");
+            } else {
+                match http::parse_url(url) {
+                    Some((host, port, path)) => {
+                        let req_bytes = http::build_request("GET", &host, &path);
+                        if let Ok(s) = core::str::from_utf8(&req_bytes) {
+                            println!("{}", s);
+                        }
+                        println!("HTTP request built for {}:{}{} (sending requires TCP)", host, port, path);
+                    }
+                    None => println!("invalid URL: {}", url),
+                }
+            }
+        }
+        "ifup" => {
+            let pkt = dhcp::discover();
+            println!("DHCP Discover built ({} bytes). Sending requires virtio-net RX.", pkt.len());
+        }
+        _ if cmd.starts_with("dns ") => {
+            let hostname = cmd[4..].trim();
+            if hostname.is_empty() {
+                println!("usage: dns <hostname>");
+            } else {
+                match dhcp::resolve(hostname) {
+                    Some(ip) => println!("{} -> {}", hostname, ip),
+                    None => println!("could not resolve {}", hostname),
+                }
+            }
+        }
+        "ahciinfo" => {
+            if ahci::is_detected() {
+                println!("{}", ahci::info());
+            } else {
+                println!("AHCI controller not detected");
+            }
+        }
+        "usbdevs" => {
+            if xhci::is_detected() {
+                println!("{}", xhci::info());
+            } else {
+                println!("xHCI USB controller not detected");
+            }
+        }
+        "ioapicinfo" => {
+            println!("{}", ioapic::info());
+        }
+        "e1000info" => {
+            if e1000e::is_detected() {
+                println!("{}", e1000e::info());
+            } else {
+                println!("e1000e NIC not detected");
+            }
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

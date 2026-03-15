@@ -294,11 +294,11 @@ pub fn init() {
     // Point each RX descriptor at its pre-allocated buffer (physical address)
     for i in 0..RING_SIZE {
         let buf_virt = unsafe { &(*rx_bufs)[i] as *const u8 as u64 };
-        let buf_phys = buf_virt - memory::phys_mem_offset().as_u64();
+        let buf_phys = buf_virt.wrapping_sub(memory::phys_mem_offset().as_u64());
         unsafe { (*rx_ring.add(i)).addr = buf_phys; }
     }
 
-    let rx_ring_phys = rx_ring as u64 - memory::phys_mem_offset().as_u64();
+    let rx_ring_phys = (rx_ring as u64).wrapping_sub(memory::phys_mem_offset().as_u64()); // virt→phys
     mmio_write(mmio_base, REG_RDBAL, rx_ring_phys as u32);
     mmio_write(mmio_base, REG_RDBAH, (rx_ring_phys >> 32) as u32);
     mmio_write(mmio_base, REG_RDLEN, rx_ring_bytes as u32);
@@ -314,7 +314,7 @@ pub fn init() {
     let tx_ring_layout = alloc::alloc::Layout::from_size_align(tx_ring_bytes, 128).unwrap();
     let tx_ring = unsafe { alloc::alloc::alloc_zeroed(tx_ring_layout) as *mut TxDesc };
 
-    let tx_ring_phys = tx_ring as u64 - memory::phys_mem_offset().as_u64();
+    let tx_ring_phys = (tx_ring as u64).wrapping_sub(memory::phys_mem_offset().as_u64()); // virt→phys
     mmio_write(mmio_base, REG_TDBAL, tx_ring_phys as u32);
     mmio_write(mmio_base, REG_TDBAH, (tx_ring_phys >> 32) as u32);
     mmio_write(mmio_base, REG_TDLEN, tx_ring_bytes as u32);
@@ -376,7 +376,7 @@ pub fn send_frame(frame: &[u8]) -> bool {
 
     // Copy frame into a heap-allocated buffer so it stays alive
     let buf = frame.to_vec();
-    let buf_phys = buf.as_ptr() as u64 - memory::phys_mem_offset().as_u64();
+    let buf_phys = (buf.as_ptr() as u64).wrapping_sub(memory::phys_mem_offset().as_u64()); // virt→phys
 
     desc.addr = buf_phys;
     desc.length = frame.len() as u16;
