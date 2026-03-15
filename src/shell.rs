@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent, script, signal, kconfig};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent, script, signal, kconfig, tcp};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -221,6 +221,11 @@ pub fn dispatch(cmd: &str) {
             println!("  recv       - receive queued packets");
             println!("  ping <ip>  - ping an address");
             println!("  arp        - ARP table");
+            println!("  tcpconn <ip:port> - TCP connect");
+            println!("  tcpsend <id> <d> - TCP send");
+            println!("  tcprecv <id> - TCP receive");
+            println!("  tcpclose <id> - TCP close");
+            println!("  netstat    - TCP connections");
             println!("  virtio     - virtio devices");
             println!("  blkdevs    - block devices");
             println!("  fatfmt     - format RAM disk as MF16");
@@ -617,6 +622,66 @@ pub fn dispatch(cmd: &str) {
                 println!("  \x1b[1mIP ADDRESS       MAC ADDRESS\x1b[0m");
                 for (ip, mac) in entries {
                     println!("  {:<16} {}", ip, mac);
+                }
+            }
+        }
+        cmd if cmd.starts_with("tcpconn ") => {
+            let target = cmd[8..].trim();
+            let (ip_str, port_str) = target.rsplit_once(':').unwrap_or((target, "80"));
+            if let Some(ip) = net::resolve(ip_str) {
+                let port = port_str.parse::<u16>().unwrap_or(80);
+                match tcp::connect(ip, port) {
+                    Ok(id) => println!("Connected: conn {} to {}:{}", id, ip, port),
+                    Err(e) => println!("tcpconn: {}", e),
+                }
+            } else {
+                println!("Cannot resolve: {}", ip_str);
+            }
+        }
+        cmd if cmd.starts_with("tcpsend ") => {
+            let rest = cmd[8..].trim();
+            if let Some((id_str, data)) = rest.split_once(' ') {
+                if let Ok(id) = id_str.parse::<usize>() {
+                    match tcp::send(id, data.as_bytes()) {
+                        Ok(n) => println!("Sent {} bytes on conn {}", n, id),
+                        Err(e) => println!("tcpsend: {}", e),
+                    }
+                }
+            } else {
+                println!("Usage: tcpsend <conn_id> <data>");
+            }
+        }
+        cmd if cmd.starts_with("tcprecv ") => {
+            if let Ok(id) = cmd[8..].trim().parse::<usize>() {
+                match tcp::recv(id) {
+                    Ok(data) if data.is_empty() => println!("(no data)"),
+                    Ok(data) => {
+                        if let Ok(s) = core::str::from_utf8(&data) {
+                            println!("{}", s);
+                        } else {
+                            println!("({} bytes binary)", data.len());
+                        }
+                    }
+                    Err(e) => println!("tcprecv: {}", e),
+                }
+            }
+        }
+        cmd if cmd.starts_with("tcpclose ") => {
+            if let Ok(id) = cmd[9..].trim().parse::<usize>() {
+                match tcp::close(id) {
+                    Ok(()) => println!("Connection {} closed", id),
+                    Err(e) => println!("tcpclose: {}", e),
+                }
+            }
+        }
+        "netstat" => {
+            let conns = tcp::list();
+            if conns.is_empty() {
+                println!("No TCP connections.");
+            } else {
+                println!("  \x1b[1mID  CONNECTION\x1b[0m");
+                for (id, desc) in conns {
+                    println!("  {:2}  {}", id, desc);
                 }
             }
         }

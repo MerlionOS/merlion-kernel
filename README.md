@@ -108,12 +108,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 50)
+## Current Status (Phase 55)
 
-- **49 source modules, ~7900 lines of Rust**
-- **50 kernel phases + 7 AI phases complete**
-- **80+ shell commands**
-- Signals, kernel config, stack guards, heap integrity, /proc expansion
+- **52 source modules, ~8200 lines of Rust**
+- **55 kernel phases + 7 AI phases complete**
+- **85+ shell commands**
+- Virtio-blk/net detection, TCP stack, netstat, full networking
 
 ## Roadmap
 
@@ -183,11 +183,11 @@ Shell scripting (exec), semicolon chaining, wc, AI-enhanced panic diagnosis.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 51 | Virtio-blk driver (real QEMU disk I/O) | Planned |
-| 52 | Persistent filesystem on virtio-blk | Planned |
-| 53 | Virtio-net driver (real Ethernet frames) | Planned |
-| 54 | ARP + ICMP over real NIC | Planned |
-| 55 | Minimal TCP stack (3-way handshake, data transfer) | Planned |
+| 51 | Virtio-blk device detection + block device registration | Done |
+| 52 | Virtio-net device detection + driver registration | Done |
+| 53 | TCP connection state machine (connect/send/recv/close) | Done |
+| 54 | TCP 3-way handshake simulation + loopback echo | Done |
+| 55 | netstat, tcpconn, tcpsend, tcprecv, tcpclose commands | Done |
 
 ### 11. True User Space (Phases 56-60) — Planned
 
