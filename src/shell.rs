@@ -259,6 +259,8 @@ pub fn dispatch(cmd: &str) {
             println!("  sleep <n>  - sleep for n seconds");
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
+            println!("  about      - about MerlionOS");
+            println!("  version    - version and build info");
             println!("  demo       - run full system demo");
             println!("  snake      - play Snake game!");
             println!("  shutdown   - power off");
@@ -1187,6 +1189,32 @@ pub fn dispatch(cmd: &str) {
             println!("Sem. VFS:   {} tagged files", semfs::list_all().len());
         }
 
+        "about" => {
+            println!();
+            println!("\x1b[36m  ▄▄▄      ▄▄▄             ▄▄                   ▄▄▄▄▄    ▄▄▄▄▄▄▄\x1b[0m");
+            println!("\x1b[36m  ████▄  ▄████             ██ ▀▀              ▄███████▄ █████▀▀▀\x1b[0m");
+            println!("\x1b[36m  ███▀████▀███ ▄█▀█▄ ████▄ ██ ██  ▄███▄ ████▄ ███   ███  ▀████▄\x1b[0m");
+            println!("\x1b[36m  ███  ▀▀  ███ ██▄█▀ ██ ▀▀ ██ ██  ██ ██ ██ ██ ███▄▄▄███    ▀████\x1b[0m");
+            println!("\x1b[36m  ███      ███ ▀█▄▄▄ ██    ██ ██▄ ▀███▀ ██ ██  ▀█████▀  ███████▀\x1b[0m");
+            println!();
+            println!("  \x1b[1m{}\x1b[0m", crate::version::SLOGAN);
+            println!("  {}", crate::version::SLOGAN_CN);
+            println!();
+            println!("  A Singapore-inspired AI-native hobby operating system.");
+            println!("  Written in Rust for x86_64. Runs in QEMU.");
+            println!();
+            println!("  Version:  {}", crate::version::full());
+            println!("  Modules:  {}", crate::version::MODULES);
+            println!("  Commands: {}+", crate::version::COMMANDS);
+            println!("  License:  MIT");
+            println!();
+            println!("  https://github.com/MerlionOS/merlion-kernel");
+            println!();
+        }
+        "version" => {
+            println!("{}", crate::version::full());
+            print!("{}", crate::version::build_info());
+        }
         "demo" => demo::run(),
         "snake" => {
             snake::run();

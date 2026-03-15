@@ -55,6 +55,7 @@ pub mod testutil;
 pub mod timer;
 pub mod ulib;
 pub mod userlib;
+pub mod version;
 pub mod vfs;
 pub mod virtio;
 pub mod virtio_blk;
