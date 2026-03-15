@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -177,6 +177,7 @@ pub fn dispatch(cmd: &str) {
             println!("  write <path> <data> - write to file");
             println!("  rm <path>  - remove file");
             println!("  wc <path>  - count lines/bytes");
+            println!("  edit <path> - text editor (Ctrl+S save, Ctrl+Q quit)");
             println!("  readelf    - parse kernel ELF header");
             println!("  mkelf <p>  - build ELF from user program");
             println!("  loadelf <s> <sz> - load ELF from disk sector");
@@ -397,6 +398,18 @@ pub fn dispatch(cmd: &str) {
         }
 
         // --- System ---
+        cmd if cmd.starts_with("edit ") => {
+            let path = cmd[5..].trim();
+            editor::open(path);
+            // Editor runs until Ctrl+Q, then keyboard handler returns to shell
+            // Wait for editor to close
+            while editor::is_editing() {
+                x86_64::instructions::hlt();
+            }
+            // Restore shell display
+            crate::vga::print_banner();
+            println!("Editor closed.");
+        }
         cmd if cmd.starts_with("wc ") => {
             let path = cmd[3..].trim();
             match vfs::cat(path) {

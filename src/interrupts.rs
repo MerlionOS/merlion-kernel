@@ -116,6 +116,8 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
     if let Some(event) = keyboard::process_scancode(scancode) {
         if crate::snake::is_running() {
             crate::snake::handle_input(event);
+        } else if crate::editor::is_editing() {
+            crate::editor::handle_input(event);
         } else {
             crate::shell::handle_key_event(event);
         }

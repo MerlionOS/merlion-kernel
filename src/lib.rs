@@ -18,6 +18,7 @@ pub mod boot_info_ext;
 pub mod demo;
 pub mod diskfs;
 pub mod driver;
+pub mod editor;
 pub mod elf;
 pub mod elf_loader;
 pub mod env;
