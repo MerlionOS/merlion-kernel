@@ -69,6 +69,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     semfs::init();
     ai_proxy::init();
     agent::init();
+    kconfig::load();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");

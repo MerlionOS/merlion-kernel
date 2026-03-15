@@ -126,7 +126,14 @@ impl Filesystem {
             parent: 4,
             data: Vec::new(),
         });
-        // 12: /tmp
+        // 12: /etc
+        fs.inodes.push(Inode {
+            name: "etc".to_owned(),
+            node_type: NodeType::Directory,
+            parent: 0,
+            data: Vec::new(),
+        });
+        // 13: /tmp
         fs.inodes.push(Inode {
             name: "tmp".to_owned(),
             node_type: NodeType::Directory,

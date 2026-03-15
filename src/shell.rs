@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent, script};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent, script, signal, kconfig};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -167,6 +167,7 @@ pub fn dispatch(cmd: &str) {
             println!("  ps         - list tasks");
             println!("  spawn      - spawn demo task");
             println!("  kill <pid> - kill a task");
+            println!("  signal <pid> <sig> - send signal");
             println!("  bg <prog>  - run user program (background)");
             println!("  run <prog> - run user program (blocking)");
             println!("  progs      - list user programs");
@@ -190,6 +191,8 @@ pub fn dispatch(cmd: &str) {
             println!("  bt         - stack backtrace");
             println!("  stackcheck - verify task stack guards");
             println!("  heapcheck  - verify heap integrity");
+            println!("  config     - show kernel config");
+            println!("  setconf K=V - set kernel config");
             println!("  lockdemo   - spinlock vs ticket lock");
             println!("AI commands:");
             println!("  ai <text>  - ask the AI (proxy or keyword)");
@@ -437,6 +440,44 @@ pub fn dispatch(cmd: &str) {
             for s in stats {
                 println!("  {:<13} {:<8} {:>8}  {:>5}  {:>3}",
                     s.name, s.kind, s.acquires, s.total_spins, s.avg_spins);
+            }
+        }
+        cmd if cmd.starts_with("signal ") => {
+            let rest = cmd[7..].trim();
+            if let Some((pid_str, sig_str)) = rest.split_once(' ') {
+                if let Ok(pid) = pid_str.trim().parse::<usize>() {
+                    if let Some(sig) = signal::parse(sig_str.trim()) {
+                        match signal::send_signal(pid, sig) {
+                            Ok(()) => println!("Sent {} to pid {}", signal::name(sig), pid),
+                            Err(e) => println!("signal: {}", e),
+                        }
+                    } else {
+                        println!("Unknown signal: {}", sig_str);
+                    }
+                } else {
+                    println!("Usage: signal <pid> <signal>");
+                }
+            } else {
+                println!("Usage: signal <pid> <SIGKILL|SIGTERM|9|15>");
+            }
+        }
+        "config" => {
+            let entries = kconfig::list();
+            if entries.is_empty() {
+                println!("No config loaded.");
+            } else {
+                for (k, v) in entries {
+                    println!("  {}={}", k, v);
+                }
+            }
+        }
+        cmd if cmd.starts_with("setconf ") => {
+            let rest = cmd[8..].trim();
+            if let Some((key, val)) = rest.split_once('=') {
+                kconfig::set(key.trim(), val.trim());
+                println!("{}={}", key.trim(), val.trim());
+            } else {
+                println!("Usage: setconf KEY=VALUE");
             }
         }
         "stackcheck" => {

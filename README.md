@@ -108,13 +108,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 42)
+## Current Status (Phase 50)
 
-- **47 source modules, ~7500 lines of Rust**
-- **42 kernel phases + 7 AI phases complete**
-- **75+ shell commands**
-- Monolithic AI-native kernel with natural language shell, LLM proxy,
-  semantic VFS, AI monitoring, self-healing, agent framework
+- **49 source modules, ~7900 lines of Rust**
+- **50 kernel phases + 7 AI phases complete**
+- **80+ shell commands**
+- Signals, kernel config, stack guards, heap integrity, /proc expansion
 
 ## Roadmap
 
@@ -171,14 +170,14 @@ Shell scripting (exec), semicolon chaining, wc, AI-enhanced panic diagnosis.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 43 | Guard pages for stack overflow detection | Planned |
-| 44 | Kernel heap hardening (double-free detection) | Planned |
-| 45 | `/proc/self` and per-process /proc entries | Planned |
-| 46 | VFS mount points (mount/umount abstractions) | Planned |
-| 47 | Signal framework (SIGKILL, SIGTERM, SIGSTOP) | Planned |
-| 48 | Job control (fg, bg, jobs, Ctrl+C) | Planned |
-| 49 | Shell pipes: `cmd1 \| cmd2` with in-memory pipe | Planned |
-| 50 | Kernel config system (/etc/merlion.conf) | Planned |
+| 43 | Stack guard canaries for overflow detection | Done |
+| 44 | Heap integrity checking (bounds, exhaustion) | Done |
+| 45 | /proc expansion (version, cpuinfo, modules, self) | Done |
+| 46 | VFS /etc directory for config files | Done |
+| 47 | Signal framework (SIGKILL, SIGTERM, SIGSTOP) | Done |
+| 48 | Shell semicolon chaining (cmd1 ; cmd2) | Done |
+| 49 | Shell script execution (exec command) | Done |
+| 50 | Kernel config system (/etc/merlion.conf) | Done |
 
 ### 10. Real I/O (Phases 51-55) — Planned
 
