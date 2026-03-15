@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env, module};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -168,6 +168,10 @@ fn dispatch(cmd: &str) {
             println!("  free       - memory summary");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
+            println!("  lsmod      - list kernel modules");
+            println!("  modprobe <m> - load a module");
+            println!("  rmmod <m>  - unload a module");
+            println!("  modinfo <m> - module details");
             println!("  pipe       - IPC demo");
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
@@ -343,6 +347,51 @@ fn dispatch(cmd: &str) {
             println!("  \x1b[1mNAME        KIND      STATUS\x1b[0m");
             for (name, kind, status) in driver::list() {
                 println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
+            }
+        }
+        "lsmod" => {
+            let mods = module::list();
+            if mods.is_empty() {
+                println!("No modules registered.");
+            } else {
+                println!("  \x1b[1mNAME         STATE     VERSION  DESCRIPTION\x1b[0m");
+                for m in mods {
+                    let state = match m.state {
+                        module::ModuleState::Loaded => "\x1b[32mloaded  \x1b[0m",
+                        module::ModuleState::Unloaded => "\x1b[90munloaded\x1b[0m",
+                    };
+                    println!("  {:<12} {} {:<8} {}", m.name, state, m.version, m.description);
+                }
+            }
+        }
+        cmd if cmd.starts_with("modprobe ") => {
+            let name = cmd[9..].trim();
+            match module::load(name) {
+                Ok(()) => println!("Module '{}' loaded.", name),
+                Err(e) => println!("modprobe: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("rmmod ") => {
+            let name = cmd[6..].trim();
+            match module::unload(name) {
+                Ok(()) => println!("Module '{}' unloaded.", name),
+                Err(e) => println!("rmmod: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("modinfo ") => {
+            let name = cmd[8..].trim();
+            match module::info(name) {
+                Some(m) => {
+                    println!("Name:        {}", m.name);
+                    println!("Description: {}", m.description);
+                    println!("Version:     {}", m.version);
+                    let state = match m.state {
+                        module::ModuleState::Loaded => "loaded",
+                        module::ModuleState::Unloaded => "unloaded",
+                    };
+                    println!("State:       {}", state);
+                }
+                None => println!("modinfo: module '{}' not found", name),
             }
         }
         "cpuinfo" => {

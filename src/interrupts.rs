@@ -70,6 +70,13 @@ extern "x86-interrupt" fn page_fault_handler(
     use x86_64::registers::control::Cr2;
     let fault_addr = Cr2::read();
 
+    // Try demand paging first
+    if let Some(addr) = fault_addr.as_u64().into() {
+        if crate::paging::handle_page_fault(addr) {
+            return; // successfully mapped, resume execution
+        }
+    }
+
     serial_println!("EXCEPTION: PAGE FAULT");
     serial_println!("  Accessed address: {:?}", fault_addr);
     serial_println!("  Error code: {:?}", error_code);

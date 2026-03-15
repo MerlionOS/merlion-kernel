@@ -67,6 +67,26 @@ pub fn phys_to_virt(phys: PhysAddr) -> VirtAddr {
     phys_mem_offset() + phys.as_u64()
 }
 
+/// Map a page in the current (kernel) page table using the global frame allocator.
+/// Used by the demand paging fault handler.
+pub fn map_page_global(
+    page: Page<Size4KiB>,
+    flags: PageTableFlags,
+) -> Option<PhysFrame> {
+    let frame = alloc_frame()?;
+    let offset = phys_mem_offset();
+    let level_4_table = unsafe { active_level_4_table(offset) };
+    let mut mapper = unsafe { OffsetPageTable::new(level_4_table, offset) };
+
+    unsafe {
+        mapper
+            .map_to(page, frame, flags, &mut GlobalFrameAllocWrapper)
+            .ok()?
+            .flush();
+    }
+    Some(frame)
+}
+
 /// Create a new page table for a user process by cloning kernel mappings.
 /// Returns the PML4 physical frame and an OffsetPageTable for the new address space.
 pub fn create_user_page_table() -> Option<(PhysFrame, OffsetPageTable<'static>)> {

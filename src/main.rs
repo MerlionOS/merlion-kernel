@@ -50,6 +50,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] Drivers registered");
     serial_println!("[ok] Drivers registered");
 
+    module::init();
+    println!("[ok] Modules registered");
+    serial_println!("[ok] Modules registered");
+
     env::init();
 
     smp::init();
