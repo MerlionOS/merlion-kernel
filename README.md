@@ -104,12 +104,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 15)
+## Current Status (Phase 16)
 
-- 25 source modules, ~4400 lines of Rust
-- SMP: CPUID detection, CPU features, APIC ID, per-CPU state
-- Networking: IPv4/UDP loopback with `ifconfig`, `send`, `recv`
-- PCI bus scan, 128K RAM disk, framebuffer graphics
+- 27 source modules, ~4100 lines of Rust
+- User-space syscall library with Rust wrappers
+- SMP: CPUID detection, CPU brand/features, per-CPU state
+- Networking, PCI, RAM disk, framebuffer, and more
 
 ## Roadmap
 
@@ -130,4 +130,4 @@ src/
 | 13 | PCI bus scan, RAM disk, block filesystem | Done |
 | 14 | Networking stack: IPv4, UDP, loopback | Done |
 | 15 | SMP: CPUID, APIC, per-CPU state, `cpuinfo` | Done |
-| 16 | Separate user-space crate, ELF loader, libc | Planned |
+| 16 | User-space syscall library (ulib) | Done |

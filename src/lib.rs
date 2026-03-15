@@ -25,5 +25,6 @@ pub mod syscall;
 pub mod task;
 pub mod testutil;
 pub mod timer;
+pub mod ulib;
 pub mod vfs;
 pub mod vga;
