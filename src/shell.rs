@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -171,6 +171,7 @@ fn dispatch(cmd: &str) {
             println!("  free       - memory summary");
             println!("  slabinfo   - slab allocator caches");
             println!("  bt         - stack backtrace");
+            println!("  lockdemo   - spinlock vs ticket lock");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
             println!("  lsmod      - list kernel modules");
@@ -379,6 +380,15 @@ fn dispatch(cmd: &str) {
             let ps = paging::stats();
             println!("  Demand paging: {} faulted-in / {} preallocated",
                 ps.pages_faulted_in, ps.pages_preallocated);
+        }
+        "lockdemo" => {
+            println!("\x1b[1mLock comparison (100 acquires each):\x1b[0m");
+            let stats = locks::demo();
+            println!("  \x1b[1mNAME          TYPE     ACQUIRES  SPINS  AVG\x1b[0m");
+            for s in stats {
+                println!("  {:<13} {:<8} {:>8}  {:>5}  {:>3}",
+                    s.name, s.kind, s.acquires, s.total_spins, s.avg_spins);
+            }
         }
         "bt" => {
             print!("{}", ksyms::format_backtrace());

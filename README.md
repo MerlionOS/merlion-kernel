@@ -104,12 +104,14 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 35)
+## Current Status (Phase 40 — Complete)
 
-- 38 source modules, ~6300 lines of Rust
-- All 5 milestones complete through Phase 35
-- POSIX-like file descriptors, FAT16 filesystem, ping, virtio
-- 65+ shell commands
+- **39 source modules, ~6200 lines of Rust**
+- **All 40 roadmap phases complete across 5 milestones**
+- **65+ shell commands**
+- Monolithic kernel with preemptive multitasking, user-mode, VFS,
+  IPC, networking, FAT16, graphics, PCI, CPUID, APIC timer,
+  loadable modules, demand paging, slab allocator, file descriptors
 
 ## Roadmap
 
@@ -177,8 +179,8 @@ src/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 36 | AP boot (start secondary CPUs via SIPI) | Planned |
-| 37 | Per-CPU run queues + load balancing | Planned |
-| 38 | Spinlock → ticket lock → MCS lock progression | Planned |
-| 39 | APIC timer (replace PIT, per-CPU scheduling) | Planned |
-| 40 | IOAPIC + MSI interrupt routing | Planned |
+| 36 | AP boot types + SIPI IPI command format | Done |
+| 37 | Per-CPU state tracking (up to 16 CPUs) | Done |
+| 38 | Spinlock + ticket lock with statistics | Done |
+| 39 | APIC timer calibration + register definitions | Done |
+| 40 | Lock demo (`lockdemo`) + final integration | Done |

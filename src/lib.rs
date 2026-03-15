@@ -5,6 +5,7 @@ extern crate alloc;
 
 pub mod acpi;
 pub mod allocator;
+pub mod apic_timer;
 pub mod blkdev;
 pub mod driver;
 pub mod env;
@@ -16,6 +17,7 @@ pub mod interrupts;
 pub mod ipc;
 pub mod keyboard;
 pub mod ksyms;
+pub mod locks;
 pub mod log;
 pub mod memory;
 pub mod module;
