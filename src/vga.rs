@@ -192,20 +192,50 @@ impl Writer {
 
 // --- Public convenience functions ---
 
-/// Print the MerlionOS boot banner.
+/// Print the MerlionOS boot banner with ASCII art Merlion.
 pub fn print_banner() {
     let mut w = WRITER.lock();
-    let banner_attr = color_attr(Color::LightGreen, Color::Black);
-    let saved = w.attr;
-
     w.clear();
-    w.set_attr(banner_attr);
     use fmt::Write;
-    let _ = w.write_str("========================================\n");
-    let _ = w.write_str("  MerlionOS v0.1.0\n");
-    let _ = w.write_str("  Hello from MerlionOS!\n");
-    let _ = w.write_str("========================================\n");
-    w.set_attr(saved);
+
+    // Water spray — cyan
+    w.set_attr(color_attr(Color::LightCyan, Color::Black));
+    let _ = w.write_str("                                  ~ ~ ~  .  ~ ~\n");
+    let _ = w.write_str("                              ~ ~  . ~  ~  . ~ ~ ~\n");
+    let _ = w.write_str("                           ~  ~ ~ ~  ~ . ~  ~\n");
+
+    // Lion head — yellow/brown
+    w.set_attr(color_attr(Color::Yellow, Color::Black));
+    let _ = w.write_str("                       /\\_/\\~\n");
+    let _ = w.write_str("                      ( o.o )    ");
+    w.set_attr(color_attr(Color::White, Color::Black));
+    let _ = w.write_str("MerlionOS v0.1.0\n");
+    w.set_attr(color_attr(Color::Yellow, Color::Black));
+    let _ = w.write_str("                       > ^ <     ");
+    w.set_attr(color_attr(Color::DarkGray, Color::Black));
+    let _ = w.write_str("x86_64 hobby OS\n");
+
+    // Body/tail — green (fish scales)
+    w.set_attr(color_attr(Color::LightGreen, Color::Black));
+    let _ = w.write_str("                      /|   |\\      \n");
+    let _ = w.write_str("                     ( |   | )   ");
+    w.set_attr(color_attr(Color::LightGray, Color::Black));
+    let _ = w.write_str("Written in Rust\n");
+    w.set_attr(color_attr(Color::LightGreen, Color::Black));
+    let _ = w.write_str("                      \\|___|/\n");
+    let _ = w.write_str("                       |   |\n");
+
+    // Fish tail
+    w.set_attr(color_attr(Color::Cyan, Color::Black));
+    let _ = w.write_str("                      /~~~~~\\\n");
+    let _ = w.write_str("                     {  ><  }\n");
+    let _ = w.write_str("                      \\_____/\n");
+
+    // Waves
+    w.set_attr(color_attr(Color::Blue, Color::Black));
+    let _ = w.write_str("    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+
+    w.set_attr(color_attr(Color::LightGray, Color::Black));
     let _ = w.write_str("\n");
 }
 
