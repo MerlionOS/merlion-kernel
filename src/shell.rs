@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, semfs};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -172,6 +172,13 @@ fn dispatch(cmd: &str) {
             println!("  slabinfo   - slab allocator caches");
             println!("  bt         - stack backtrace");
             println!("  lockdemo   - spinlock vs ticket lock");
+            println!("AI commands:");
+            println!("  ai <text>  - ask the AI (proxy or keyword)");
+            println!("  monitor    - AI system health check");
+            println!("  tag <p> <t> - tag a file");
+            println!("  tags <p>   - show file tags");
+            println!("  search <q> - search files by tag");
+            println!("  aistatus   - AI proxy status");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
             println!("  lsmod      - list kernel modules");
@@ -756,6 +763,62 @@ fn dispatch(cmd: &str) {
             });
         }
         "clear" => crate::vga::WRITER.lock().clear(),
+        // --- AI commands ---
+        cmd if cmd.starts_with("ai ") => {
+            let prompt = cmd[3..].trim();
+            // Try LLM proxy first, fall back to keyword AI shell
+            if let Some(response) = ai_proxy::infer(prompt) {
+                println!("\x1b[36m[ai]\x1b[0m {}", response);
+            } else if let Some(ai_cmd) = ai_shell::interpret(prompt) {
+                println!("{}", ai_shell::format_hint(prompt, &ai_cmd));
+                dispatch(&ai_cmd);
+            } else {
+                println!("\x1b[90m[ai] Cannot interpret: \"{}\"\x1b[0m", prompt);
+                println!("\x1b[90m     (Connect LLM proxy to COM2 for full AI)\x1b[0m");
+            }
+        }
+        "monitor" => {
+            println!("\x1b[1m=== AI System Monitor ===\x1b[0m");
+            let alerts = ai_monitor::check();
+            print!("{}", ai_monitor::format_alerts(&alerts));
+        }
+        cmd if cmd.starts_with("tag ") => {
+            let rest = cmd[4..].trim();
+            if let Some((path, tag)) = rest.split_once(' ') {
+                let tags: alloc::vec::Vec<&str> = tag.split_whitespace().collect();
+                semfs::tag(path, &tags);
+                println!("Tagged {} with {:?}", path, tags);
+            } else {
+                println!("Usage: tag <path> <tag1> [tag2 ...]");
+            }
+        }
+        cmd if cmd.starts_with("tags ") => {
+            let path = cmd[5..].trim();
+            let tags = semfs::get_tags(path);
+            if tags.is_empty() {
+                println!("No tags for {}", path);
+            } else {
+                println!("{}: {}", path, tags.join(", "));
+            }
+        }
+        cmd if cmd.starts_with("search ") => {
+            let query = cmd[7..].trim();
+            let results = semfs::search(query);
+            if results.is_empty() {
+                println!("No files match '{}'", query);
+            } else {
+                for path in results {
+                    let tags = semfs::get_tags(&path);
+                    println!("  {} [{}]", path, tags.join(", "));
+                }
+            }
+        }
+        "aistatus" => {
+            println!("AI Proxy:  {}", ai_proxy::status());
+            println!("AI Shell:  keyword engine (built-in)");
+            println!("Sem. VFS:  {} tagged files", semfs::list_all().len());
+        }
+
         "panic" => panic!("user-triggered panic via shell"),
         _ => {
             // Try AI natural language interpretation

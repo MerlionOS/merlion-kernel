@@ -4,6 +4,8 @@
 extern crate alloc;
 
 pub mod acpi;
+pub mod ai_monitor;
+pub mod ai_proxy;
 pub mod ai_shell;
 pub mod allocator;
 pub mod apic_timer;
@@ -29,6 +31,7 @@ pub mod pci;
 pub mod process;
 pub mod ramdisk;
 pub mod rtc;
+pub mod semfs;
 pub mod serial;
 pub mod slab;
 pub mod smp;

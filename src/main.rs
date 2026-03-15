@@ -66,6 +66,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     smp::init();
     apic_timer::init();
+    semfs::init();
+    ai_proxy::init();
     println!("[ok] SMP: {} CPU(s) online", smp::online_cpus());
     serial_println!("[ok] SMP initialized");
 
