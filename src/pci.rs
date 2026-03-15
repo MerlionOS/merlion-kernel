@@ -83,6 +83,20 @@ pub fn pci_read32(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
     }
 }
 
+/// Write a 32-bit value to PCI configuration space.
+pub fn pci_write32(bus: u8, device: u8, func: u8, offset: u8, value: u32) {
+    let addr: u32 = 0x8000_0000
+        | ((bus as u32) << 16)
+        | ((device as u32) << 11)
+        | ((func as u32) << 8)
+        | ((offset as u32) & 0xFC);
+
+    unsafe {
+        Port::new(PCI_CONFIG_ADDR).write(addr);
+        Port::new(PCI_CONFIG_DATA).write(value);
+    }
+}
+
 /// Scan PCI bus 0 for all devices.
 pub fn scan() -> Vec<PciDevice> {
     let mut devices = Vec::new();
