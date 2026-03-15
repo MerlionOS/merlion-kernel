@@ -32,57 +32,69 @@ make run-serial
 
 ## Shell Commands
 
-| Command  | Description |
-|----------|-------------|
-| `help`   | List available commands |
-| `info`   | System information |
-| `uptime` | Time since boot |
-| `heap`   | Heap allocator statistics |
-| `ps`     | List running tasks |
-| `spawn`  | Spawn a demo task |
-| `dmesg`  | Kernel log ring buffer |
-| `clear`  | Clear screen |
-| `umode`  | Test user-mode (ring 3) transition |
-| `panic`  | Trigger a test kernel panic |
+| Command     | Description |
+|-------------|-------------|
+| `help`      | List available commands |
+| `info`      | System information |
+| `uptime`    | Time since boot |
+| `heap`      | Heap allocator statistics |
+| `ps`        | List running tasks |
+| `spawn`     | Spawn a demo kernel task |
+| `run <prog>`| Run a user-mode program |
+| `progs`     | List available user programs |
+| `dmesg`     | Kernel log ring buffer |
+| `clear`     | Clear screen |
+| `umode`     | Test ring 3 transition |
+| `panic`     | Trigger a test kernel panic |
+
+## User Programs
+
+| Name      | Description |
+|-----------|-------------|
+| `hello`   | Prints "Hello userspace!" via sys_write, then exits |
+| `counter` | Writes "counting" 3 times with sys_yield between each |
 
 ## Project Structure
 
 ```
 merlion-kernel/
-├── .cargo/config.toml      # Build target and runner config
-├── rust-toolchain.toml      # Pins nightly toolchain
-├── Cargo.toml               # Package manifest
-├── Makefile                  # Build/run shortcuts
 ├── src/
-│   ├── main.rs              # Kernel entry point and panic handler
-│   ├── vga.rs               # VGA text console with scrolling
-│   ├── serial.rs            # UART serial port driver (COM1)
-│   ├── gdt.rs               # GDT with kernel + user segments, TSS
-│   ├── interrupts.rs        # IDT: exceptions, IRQs, syscall
-│   ├── keyboard.rs          # PS/2 scancode set 1 decoder
-│   ├── memory.rs            # Page table access + frame allocator
-│   ├── allocator.rs         # Kernel heap allocator
-│   ├── timer.rs             # PIT tick counter and uptime
-│   ├── log.rs               # Kernel log ring buffer (dmesg)
-│   ├── task.rs              # Task management + context switching
-│   ├── usermode.rs          # Ring 3 transition via iretq
-│   └── shell.rs             # Interactive kernel shell
+│   ├── main.rs          # Kernel entry point and panic handler
+│   ├── vga.rs           # VGA text console with scrolling
+│   ├── serial.rs        # UART serial port driver (COM1)
+│   ├── gdt.rs           # GDT with kernel + user segments, TSS
+│   ├── interrupts.rs    # IDT: exceptions, IRQs, raw syscall handler
+│   ├── keyboard.rs      # PS/2 scancode set 1 decoder
+│   ├── memory.rs        # Page tables, global frame allocator
+│   ├── allocator.rs     # Kernel heap allocator
+│   ├── timer.rs         # PIT tick counter and uptime
+│   ├── log.rs           # Kernel log ring buffer (dmesg)
+│   ├── task.rs          # Kernel task management + context switching
+│   ├── syscall.rs       # Syscall dispatch (write, exit, yield)
+│   ├── process.rs       # User process: page tables, program loading
+│   ├── usermode.rs      # Ring 3 transition via iretq
+│   └── shell.rs         # Interactive kernel shell
+├── .cargo/config.toml
+├── rust-toolchain.toml
+├── Cargo.toml
+├── Makefile
 └── README.md
 ```
 
-## Current Status (Phase 6)
+## Current Status (Phase 7)
 
-- Kernel task (thread) management with PID tracking
-- Cooperative and preemptive context switching
-- Round-robin scheduler triggered by timer interrupt
-- Naked function context switch (callee-saved registers + RSP)
-- Per-task heap-allocated stacks (16K each)
-- `spawn` / `ps` shell commands
-- Demo tasks that print, yield, and exit
+- Per-process page tables (clone kernel upper-half, map user lower-half)
+- Syscall ABI via raw int 0x80 handler (rax=num, rdi/rsi/rdx=args)
+- sys_write, sys_exit, sys_yield syscalls
+- Embedded user programs (hand-assembled x86_64 machine code)
+- User code mapped at 0x400000, user stack at 0x800000
+- CR3 switch to user page table before ring 3 entry
+- Global frame allocator accessible from all subsystems
 
-## Next Milestone (Phase 7)
+## Next Milestone (Phase 8)
 
-- Per-process page tables (address space isolation)
-- Minimal ELF binary loader
-- Expanded syscall interface (write, exit, yield)
-- Process lifecycle (fork-like spawning)
+- Separate user-mode binary build (ELF loader)
+- Process isolation and cleanup (free page tables on exit)
+- Multiple concurrent user processes
+- IPC (inter-process communication) primitives
+- Virtual filesystem (VFS) interface

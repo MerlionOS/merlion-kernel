@@ -10,8 +10,10 @@ mod interrupts;
 mod keyboard;
 mod log;
 mod memory;
+mod process;
 mod serial;
 mod shell;
+mod syscall;
 mod task;
 mod timer;
 mod usermode;
@@ -30,42 +32,37 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     vga::print_banner();
 
     gdt::init();
-    klog_println!("[ok] GDT loaded (kernel + user segments)");
     println!("[ok] GDT loaded");
     serial_println!("[ok] GDT loaded");
 
     timer::init();
-    klog_println!("[ok] PIT configured at {} Hz", timer::PIT_FREQUENCY_HZ);
     serial_println!("[ok] PIT configured at {} Hz", timer::PIT_FREQUENCY_HZ);
 
     interrupts::init();
     println!("[ok] IDT + interrupts enabled");
-    klog_println!("[ok] IDT loaded, interrupts enabled");
     serial_println!("[ok] IDT loaded, interrupts enabled");
 
+    // Initialize memory system (page tables + global frame allocator)
     let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset);
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe {
-        memory::BootInfoFrameAllocator::init(&boot_info.memory_map)
-    };
+    let mut mapper = unsafe { memory::init(phys_mem_offset, &boot_info.memory_map) };
     println!("[ok] Memory initialized");
-    klog_println!("[ok] Page table and frame allocator initialized");
     serial_println!("[ok] Page table and frame allocator initialized");
 
-    allocator::init(&mut mapper, &mut frame_allocator)
-        .expect("heap initialization failed");
+    // Initialize heap using the global frame allocator
+    memory::with_frame_allocator(|fa| {
+        allocator::init(&mut mapper, fa)
+            .expect("heap initialization failed");
+    });
     println!("[ok] Heap ready ({}K)", allocator::HEAP_SIZE / 1024);
-    klog_println!("[ok] Heap allocator initialized ({}K)", allocator::HEAP_SIZE / 1024);
     serial_println!("[ok] Heap allocator initialized ({}K)", allocator::HEAP_SIZE / 1024);
 
     task::init();
     println!("[ok] Task system ready");
-    klog_println!("[ok] Task system initialized");
     serial_println!("[ok] Task system initialized");
 
+    klog_println!("Kernel initialization complete.");
     println!();
     println!("Type 'help' for available commands.");
-    klog_println!("Kernel initialization complete.");
     serial_println!("Kernel initialization complete. Shell active.");
     shell::prompt();
 

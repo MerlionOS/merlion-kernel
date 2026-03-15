@@ -1,18 +1,16 @@
 /// Interrupt Descriptor Table setup and handlers.
-/// Handles CPU exceptions (breakpoint, double fault, page fault) and
-/// hardware interrupts (PIT timer, PS/2 keyboard).
+/// Handles CPU exceptions, hardware interrupts (PIT, keyboard),
+/// and syscalls (int 0x80) with register-based ABI.
 
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+use x86_64::VirtAddr;
 use spin::Lazy;
 use crate::gdt;
 use crate::{serial_println, klog_println};
 
-/// PIC interrupt offset — hardware IRQs start at interrupt 32.
 const PIC_OFFSET_PRIMARY: u8 = 32;
 const PIC_OFFSET_SECONDARY: u8 = PIC_OFFSET_PRIMARY + 8;
-
-/// Syscall interrupt vector.
-const SYSCALL_VECTOR: u8 = 0x80;
+const SYSCALL_VECTOR: usize = 0x80;
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -21,7 +19,6 @@ enum HardwareInterrupt {
     Keyboard = PIC_OFFSET_PRIMARY + 1,
 }
 
-/// 8259 PIC pair, remapped to interrupts 32–47.
 static PICS: spin::Mutex<pic8259::ChainedPics> = spin::Mutex::new(
     unsafe { pic8259::ChainedPics::new(PIC_OFFSET_PRIMARY, PIC_OFFSET_SECONDARY) }
 );
@@ -42,14 +39,17 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt[HardwareInterrupt::Timer as u8 as usize].set_handler_fn(timer_handler);
     idt[HardwareInterrupt::Keyboard as u8 as usize].set_handler_fn(keyboard_handler);
 
-    // Syscall (int 0x80) — callable from ring 3
-    let syscall_entry = idt[SYSCALL_VECTOR as usize].set_handler_fn(syscall_handler);
-    syscall_entry.set_privilege_level(x86_64::PrivilegeLevel::Ring3);
+    // Syscall (int 0x80) — raw handler to access user registers
+    unsafe {
+        let handler_addr = VirtAddr::new(syscall_trampoline as *const () as u64);
+        idt[SYSCALL_VECTOR]
+            .set_handler_addr(handler_addr)
+            .set_privilege_level(x86_64::PrivilegeLevel::Ring3);
+    }
 
     idt
 });
 
-/// Load the IDT and initialize the PICs.
 pub fn init() {
     IDT.load();
     unsafe { PICS.lock().initialize() };
@@ -97,7 +97,6 @@ extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
             .notify_end_of_interrupt(HardwareInterrupt::Timer as u8);
     }
 
-    // Preemptive scheduling: yield on every timer tick
     crate::task::timer_tick();
 }
 
@@ -119,8 +118,57 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
 
 // --- Syscall handler ---
 
-extern "x86-interrupt" fn syscall_handler(_stack_frame: InterruptStackFrame) {
-    // Minimal syscall: just log that user-mode called us
-    serial_println!("[syscall] int 0x80 from user-mode");
-    klog_println!("[syscall] int 0x80 received");
+/// Raw trampoline for int 0x80. Saves user registers, calls the Rust
+/// dispatch function with syscall number and arguments, then returns via iretq.
+#[unsafe(naked)]
+extern "C" fn syscall_trampoline() {
+    core::arch::naked_asm!(
+        // Save all caller-saved registers we'll clobber
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
+
+        // Set up arguments for syscall_dispatch_inner(rax, rdi, rsi, rdx)
+        // Currently: rax is at [rsp+64], rdi at [rsp+0], rsi at [rsp+8], rdx at [rsp+16]
+        // But we pushed them, so we need to read from the stack.
+        // Order pushed: rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11
+        // rsp+0 = r11, rsp+8 = r10, rsp+16 = r9, rsp+24 = r8
+        // rsp+32 = rdi, rsp+40 = rsi, rsp+48 = rdx, rsp+56 = rcx, rsp+64 = rax
+
+        // C ABI: arg1=rdi, arg2=rsi, arg3=rdx, arg4=rcx
+        // We want: dispatch(rax, rdi, rsi, rdx)
+        "mov rcx, [rsp+48]",  // arg4 = original rdx
+        "mov rdx, [rsp+40]",  // arg3 = original rsi
+        "mov rsi, [rsp+32]",  // arg2 = original rdi
+        "mov rdi, [rsp+64]",  // arg1 = original rax
+
+        // Call the Rust dispatch function
+        "call {dispatch}",
+
+        // Restore registers
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
+
+        "iretq",
+        dispatch = sym syscall_dispatch_inner,
+    );
+}
+
+/// Rust-callable syscall dispatch. Called by the trampoline with the
+/// original user register values.
+extern "C" fn syscall_dispatch_inner(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
+    crate::syscall::dispatch(syscall_num, arg1, arg2, arg3);
 }

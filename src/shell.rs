@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task};
+use crate::{print, println, serial_println, allocator, timer, task, process};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -68,7 +68,9 @@ fn dispatch(cmd: &str) {
             println!("  uptime  - time since boot");
             println!("  heap    - heap allocator stats");
             println!("  ps      - list running tasks");
-            println!("  spawn   - spawn a demo task");
+            println!("  spawn   - spawn a demo kernel task");
+            println!("  run <p> - run a user program (hello, counter)");
+            println!("  progs   - list available user programs");
             println!("  dmesg   - kernel log buffer");
             println!("  clear   - clear screen");
             println!("  umode   - test user-mode transition");
@@ -117,6 +119,23 @@ fn dispatch(cmd: &str) {
         }
         "clear" => {
             crate::vga::WRITER.lock().clear();
+        }
+        "progs" => {
+            println!("Available user programs:");
+            for name in process::list_programs() {
+                println!("  {}", name);
+            }
+        }
+        cmd if cmd.starts_with("run ") => {
+            let prog_name = cmd[4..].trim();
+            match process::run_user_program(prog_name) {
+                Ok(()) => println!("Program '{}' finished.", prog_name),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        "run" => {
+            println!("Usage: run <program>");
+            println!("Available: {:?}", process::list_programs());
         }
         "umode" => {
             println!("Entering user-mode (ring 3)...");
