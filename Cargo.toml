@@ -7,6 +7,9 @@ description = "A Singapore-inspired hobby operating system kernel"
 
 [dependencies]
 bootloader = "0.9"
+x86_64 = "0.14"
+spin = "0.9"
+pic8259 = "0.10"
 
 [profile.dev]
 panic = "abort"

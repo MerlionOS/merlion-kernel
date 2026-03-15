@@ -31,13 +31,13 @@ The bootable image is created at:
 make run
 ```
 
-Or directly:
+This opens a QEMU window with the VGA boot banner. Serial output (kernel logs) is printed to your terminal.
+
+To run headless (serial only, no GUI window):
 
 ```sh
-qemu-system-x86_64 -drive format=raw,file=target/x86_64-unknown-none/debug/bootimage-merlion-kernel.bin
+make run-serial
 ```
-
-A QEMU window will open showing the MerlionOS boot banner.
 
 ## Project Structure
 
@@ -49,23 +49,28 @@ merlion-kernel/
 ├── Makefile                  # Build/run shortcuts
 ├── src/
 │   ├── main.rs              # Kernel entry point and panic handler
-│   └── vga.rs               # VGA text mode buffer writer
+│   ├── vga.rs               # VGA text mode buffer writer
+│   ├── serial.rs            # UART serial port driver (COM1)
+│   ├── gdt.rs               # Global Descriptor Table + TSS
+│   └── interrupts.rs        # IDT, exception and interrupt handlers
 └── README.md
 ```
 
-## Current Status (Phase 1)
+## Current Status (Phase 2)
 
 - Boots in QEMU via `bootloader` crate
 - Reaches Rust kernel entry point
 - Prints "Hello from MerlionOS!" to VGA text buffer
-- Panic handler writes to screen in red
+- Serial port logging (COM1/UART) with `serial_println!` macro
+- Panic handler outputs to both serial (with location) and VGA (red text)
+- GDT with TSS (separate double fault stack)
+- IDT with breakpoint and double fault exception handlers
+- PIC initialization and PIT timer interrupt handling
 - CPU halts cleanly after boot
 
-## Next Milestone (Phase 2)
+## Next Milestone (Phase 3)
 
-- Serial port (UART) logging
-- Improved panic output with location info
-- GDT (Global Descriptor Table) setup
-- IDT (Interrupt Descriptor Table) setup
-- Basic exception handlers (double fault, etc.)
-- Timer interrupt (PIT) groundwork
+- Keyboard input (PS/2 via IRQ1)
+- Basic heap allocator
+- Physical memory management (frame allocator)
+- Page table setup / virtual memory
