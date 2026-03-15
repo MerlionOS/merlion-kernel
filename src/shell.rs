@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, boot_info_ext};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -178,6 +178,8 @@ pub fn dispatch(cmd: &str) {
             println!("  rm <path>  - remove file");
             println!("  wc <path>  - count lines/bytes");
             println!("  readelf    - parse kernel ELF header");
+            println!("  mkelf <p>  - build ELF from user program");
+            println!("  loadelf <s> <sz> - load ELF from disk sector");
             println!("  exec <path> - run shell script");
             println!("  open <p>   - open file descriptor");
             println!("  close <fd> - close file descriptor");
@@ -393,6 +395,68 @@ pub fn dispatch(cmd: &str) {
                     println!("  {} lines, {} words, {} bytes  {}", lines, words, bytes, path);
                 }
                 Err(e) => println!("wc: {}: {}", path, e),
+            }
+        }
+        cmd if cmd.starts_with("mkelf ") => {
+            let name = cmd[6..].trim();
+            match process::get_program(name) {
+                Some(code) => {
+                    let elf_data = elf_loader::build_elf(code);
+                    println!("Built ELF for '{}': {} bytes", name, elf_data.len());
+
+                    // Parse it back to verify
+                    match elf::parse(&elf_data) {
+                        Ok(info) => print!("{}", elf::format_info(&info)),
+                        Err(e) => println!("Parse error: {}", e),
+                    }
+
+                    // Write to disk if available
+                    if virtio_blk::is_detected() {
+                        // Write ELF to disk starting at sector 100
+                        let sectors = (elf_data.len() + 511) / 512;
+                        for i in 0..sectors {
+                            let mut buf = [0u8; 512];
+                            let start = i * 512;
+                            let end = (start + 512).min(elf_data.len());
+                            buf[..end - start].copy_from_slice(&elf_data[start..end]);
+                            let _ = virtio_blk::write_sector(100 + i as u64, &buf);
+                        }
+                        println!("Written to disk sectors 100-{} ({} sectors)",
+                            100 + sectors - 1, sectors);
+                        println!("Load with: loadelf 100 {}", elf_data.len());
+                    }
+                }
+                None => println!("Unknown program: {} (try: hello, counter)", name),
+            }
+        }
+        cmd if cmd.starts_with("loadelf ") => {
+            let rest = cmd[8..].trim();
+            if let Some((sec_str, sz_str)) = rest.split_once(' ') {
+                let sector = sec_str.parse::<u64>().unwrap_or(0);
+                let size = sz_str.parse::<usize>().unwrap_or(0);
+                if size == 0 {
+                    println!("Usage: loadelf <sector> <size>");
+                } else {
+                    match elf_loader::load_from_disk(sector, size) {
+                        Ok(data) => {
+                            println!("Loaded {} bytes from sector {}", data.len(), sector);
+                            match elf::parse(&data) {
+                                Ok(info) => {
+                                    print!("{}", elf::format_info(&info));
+                                    println!("Executing...");
+                                    match elf_loader::load_and_exec("disk-elf", &data) {
+                                        Ok(()) => println!("ELF execution finished."),
+                                        Err(e) => println!("Exec error: {}", e),
+                                    }
+                                }
+                                Err(e) => println!("ELF parse error: {}", e),
+                            }
+                        }
+                        Err(e) => println!("Load error: {}", e),
+                    }
+                }
+            } else {
+                println!("Usage: loadelf <start_sector> <size_bytes>");
             }
         }
         "readelf" => {
