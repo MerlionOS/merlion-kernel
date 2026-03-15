@@ -163,6 +163,21 @@ impl fmt::Write for Writer {
                     continue;
                 }
             }
+            // Check for UTF-8 block drawing characters (U+2580-U+259F)
+            // 3-byte sequence: 0xE2 0x96 0xXX → CP437 block chars
+            if i + 2 < bytes.len() && bytes[i] == 0xE2 && bytes[i + 1] == 0x96 {
+                let cp437 = match bytes[i + 2] {
+                    0x80 => 0xDF, // ▀ upper half block
+                    0x84 => 0xDC, // ▄ lower half block
+                    0x88 => 0xDB, // █ full block
+                    0x8C => 0xDD, // ▌ left half block (bonus)
+                    0x90 => 0xDE, // ▐ right half block (bonus)
+                    _ => b'?',
+                };
+                self.write_byte(cp437);
+                i += 3;
+                continue;
+            }
             self.write_byte(bytes[i]);
             i += 1;
         }
@@ -192,7 +207,7 @@ impl Writer {
 
 // --- Public convenience functions ---
 
-/// Print the MerlionOS boot banner with ASCII art Merlion + Marina Bay Sands.
+/// Print the MerlionOS boot banner with block-letter logo.
 pub fn print_banner() {
     let mut w = WRITER.lock();
     w.clear();
@@ -200,100 +215,29 @@ pub fn print_banner() {
 
     let cyan = color_attr(Color::LightCyan, Color::Black);
     let yellow = color_attr(Color::Yellow, Color::Black);
-    let green = color_attr(Color::LightGreen, Color::Black);
-    let gray = color_attr(Color::DarkGray, Color::Black);
-    let blue = color_attr(Color::Blue, Color::Black);
     let white = color_attr(Color::White, Color::Black);
+    let gray = color_attr(Color::DarkGray, Color::Black);
     let default = color_attr(Color::LightGray, Color::Black);
 
-    // Row 0-1: water spray
+    // Block letter "MerlionOS" logo
     w.set_attr(cyan);
-    let _ = w.write_str("                                        ~ . ~ ~ ~ . ~ ~ ~\n");
-    let _ = w.write_str("                                   ~ ~ . ~ ~ . ~ ~ . ~ ~\n");
+    let _ = w.write_str("\n");
+    let _ = w.write_str("  \x1b[36m▄▄▄      ▄▄▄             ▄▄                   ▄▄▄▄▄    ▄▄▄▄▄▄▄\n");
+    let _ = w.write_str("  ████▄  ▄████             ██ ▀▀              ▄███████▄ █████▀▀▀\n");
+    let _ = w.write_str("  ███▀████▀███ ▄█▀█▄ ████▄ ██ ██  ▄███▄ ████▄ ███   ███  ▀████▄\n");
+    let _ = w.write_str("  ███  ▀▀  ███ ██▄█▀ ██ ▀▀ ██ ██  ██ ██ ██ ██ ███▄▄▄███    ▀████\n");
+    let _ = w.write_str("  ███      ███ ▀█▄▄▄ ██    ██ ██▄ ▀███▀ ██ ██  ▀█████▀  ███████▀\n");
 
-    // Row 2: water + mane top
-    w.set_attr(cyan);
-    let _ = w.write_str("                                ~ ~ . ~");
+    w.set_attr(gray);
+    let _ = w.write_str("  ─────────────────────────────────────────────────────────────────\n");
+
     w.set_attr(yellow);
-    let _ = w.write_str("          ,,    ,,\n");
-
-    // Row 3: MBS top + lion head
-    w.set_attr(gray);
-    let _ = w.write_str("             __________");
-    w.set_attr(cyan);
-    let _ = w.write_str("   ~ . ~");
-    w.set_attr(yellow);
-    let _ = w.write_str("      /  \\__/  \\\n");
-
-    // Row 4: MBS + lion face
-    w.set_attr(gray);
-    let _ = w.write_str("   .======. | || || || |");
-    w.set_attr(cyan);
-    let _ = w.write_str(" ~ ~");
-    w.set_attr(yellow);
-    let _ = w.write_str("       | .    . |\n");
-
-    // Row 5: MBS + open mouth with water
-    w.set_attr(gray);
-    let _ = w.write_str("  / ____  \\| || || || |");
-    w.set_attr(cyan);
-    let _ = w.write_str("~ . ~");
-    w.set_attr(yellow);
-    let _ = w.write_str("  .---|  (__)  |\n");
-
-    // Row 6: MBS + mouth/jaw
-    w.set_attr(gray);
-    let _ = w.write_str(" |  |   |  | || || || |");
-    w.set_attr(cyan);
-    let _ = w.write_str(" ~~~~");
-    w.set_attr(yellow);
-    let _ = w.write_str(" <     |   __  |\n");
-
-    // Row 7: MBS + neck/chest
-    w.set_attr(gray);
-    let _ = w.write_str(" |  |   |  | || || || |");
-    w.set_attr(yellow);
-    let _ = w.write_str("       `---|  |  | |\n");
-
-    // Row 8-9: MBS + fish body with scales
-    w.set_attr(gray);
-    let _ = w.write_str(" |  |___|  | || || || |");
-    w.set_attr(green);
-    let _ = w.write_str("          /| )|  |( |\\\n");
-
-    w.set_attr(gray);
-    let _ = w.write_str(" |_________|_||_||_||_|");
-    w.set_attr(green);
-    let _ = w.write_str("         | | )|  |( | |\n");
-
-    // Row 10-11: MBS base + fish tail
-    w.set_attr(gray);
-    let _ = w.write_str("  | | | |   | | | | | ");
-    w.set_attr(green);
-    let _ = w.write_str("          \\  \\|  |/  /\n");
-
-    w.set_attr(gray);
-    let _ = w.write_str("  |_|_|_|   |_|_|_|_| ");
-    w.set_attr(cyan);
-    let _ = w.write_str("           | |====| |\n");
-
-    // Row 12: space + tail bottom
-    let _ = w.write_str("                                          \\| ><<> |/\n");
-    let _ = w.write_str("                                           \\______/\n");
-
-    // Waves
-    w.set_attr(blue);
-    let _ = w.write_str(" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-
-    // Labels
-    w.set_attr(gray);
-    let _ = w.write_str("   Marina Bay Sands");
-    w.set_attr(yellow);
-    let _ = w.write_str("            The Merlion");
+    let _ = w.write_str("       A Singapore-inspired hobby OS");
     w.set_attr(white);
-    let _ = w.write_str("      MerlionOS v0.1.0\n");
+    let _ = w.write_str("       x86_64 | Rust | QEMU\n");
 
     w.set_attr(default);
+    let _ = w.write_str("\n");
 }
 
 #[macro_export]
