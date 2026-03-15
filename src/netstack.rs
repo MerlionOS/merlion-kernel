@@ -5,12 +5,12 @@
 /// Ethernet, ARP, IPv4, UDP, and ICMP frames, as well as a polling receive
 /// path that parses incoming Ethernet headers.
 ///
-/// NIC selection priority: e1000e > virtio-net > loopback (no real NIC).
+/// NIC selection priority: e1000e > virtio-net > usb-eth (CDC-ECM) > loopback (no real NIC).
 
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU8, Ordering};
 
-use crate::{e1000e, virtio_net, net, serial_println};
+use crate::{e1000e, usb_eth, virtio_net, net, serial_println};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,6 +48,8 @@ enum NicBackend {
     E1000e = 1,
     /// Virtio-net (legacy PCI transport).
     VirtioNet = 2,
+    /// USB CDC-ECM/NCM Ethernet adapter.
+    UsbEth = 3,
 }
 
 /// Active backend, set once during [`init`].
@@ -58,6 +60,7 @@ fn backend() -> NicBackend {
     match BACKEND.load(Ordering::Relaxed) {
         1 => NicBackend::E1000e,
         2 => NicBackend::VirtioNet,
+        3 => NicBackend::UsbEth,
         _ => NicBackend::None,
     }
 }
@@ -96,6 +99,9 @@ pub fn init() {
     } else if virtio_net::is_detected() {
         BACKEND.store(NicBackend::VirtioNet as u8, Ordering::SeqCst);
         serial_println!("[netstack] backend: virtio-net");
+    } else if usb_eth::is_detected() {
+        BACKEND.store(NicBackend::UsbEth as u8, Ordering::SeqCst);
+        serial_println!("[netstack] backend: usb-eth (CDC-ECM)");
     } else {
         BACKEND.store(NicBackend::None as u8, Ordering::SeqCst);
         serial_println!("[netstack] backend: loopback (no NIC)");
@@ -114,6 +120,7 @@ fn nic_send(frame: &[u8]) -> bool {
     match backend() {
         NicBackend::E1000e => e1000e::send_frame(frame),
         NicBackend::VirtioNet => virtio_net::send_frame(frame).is_ok(),
+        NicBackend::UsbEth => usb_eth::send_frame(frame).is_ok(),
         NicBackend::None => false,
     }
 }
@@ -127,6 +134,7 @@ fn nic_recv() -> Option<Vec<u8>> {
         NicBackend::E1000e => e1000e::recv_frame(),
         // virtio-net does not yet expose recv_frame; return None.
         NicBackend::VirtioNet => None,
+        NicBackend::UsbEth => usb_eth::recv_frame(),
         NicBackend::None => None,
     }
 }
