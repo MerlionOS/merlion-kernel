@@ -198,83 +198,102 @@ pub fn print_banner() {
     w.clear();
     use fmt::Write;
 
-    // Water spray arcing from Merlion's mouth — cyan
-    w.set_attr(color_attr(Color::LightCyan, Color::Black));
-    let _ = w.write_str("                                          .  ~ ~ ~  . ~ ~ ~\n");
-    let _ = w.write_str("                                     ~ ~  . ~ ~  . ~ ~  . ~\n");
-    let _ = w.write_str("                                  ~ ~  .  ~");
+    let cyan = color_attr(Color::LightCyan, Color::Black);
+    let yellow = color_attr(Color::Yellow, Color::Black);
+    let green = color_attr(Color::LightGreen, Color::Black);
+    let gray = color_attr(Color::DarkGray, Color::Black);
+    let blue = color_attr(Color::Blue, Color::Black);
+    let white = color_attr(Color::White, Color::Black);
+    let default = color_attr(Color::LightGray, Color::Black);
 
-    // Merlion head — yellow (lion mane + face, facing left)
-    w.set_attr(color_attr(Color::Yellow, Color::Black));
-    let _ = w.write_str("        ___\n");
+    // Row 0-1: water spray
+    w.set_attr(cyan);
+    let _ = w.write_str("                                        ~ . ~ ~ ~ . ~ ~ ~\n");
+    let _ = w.write_str("                                   ~ ~ . ~ ~ . ~ ~ . ~ ~\n");
 
-    // Marina Bay Sands (dark gray) + water + Merlion head
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("               __________");
-    w.set_attr(color_attr(Color::LightCyan, Color::Black));
-    let _ = w.write_str("    ~ . ~ ~");
-    w.set_attr(color_attr(Color::Yellow, Color::Black));
-    let _ = w.write_str("        /' . `\\\n");
+    // Row 2: water + mane top
+    w.set_attr(cyan);
+    let _ = w.write_str("                                ~ ~ . ~");
+    w.set_attr(yellow);
+    let _ = w.write_str("          ,,    ,,\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("     .======. | || || || |");
-    w.set_attr(color_attr(Color::LightCyan, Color::Black));
-    let _ = w.write_str(" ~~");
-    w.set_attr(color_attr(Color::Yellow, Color::Black));
-    let _ = w.write_str("                 | o     >\n");
+    // Row 3: MBS top + lion head
+    w.set_attr(gray);
+    let _ = w.write_str("             __________");
+    w.set_attr(cyan);
+    let _ = w.write_str("   ~ . ~");
+    w.set_attr(yellow);
+    let _ = w.write_str("      /  \\__/  \\\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("    /  ____  \\| || || || |");
-    w.set_attr(color_attr(Color::LightCyan, Color::Black));
-    let _ = w.write_str("~.");
-    w.set_attr(color_attr(Color::Yellow, Color::Black));
-    let _ = w.write_str("                  | .--. |\n");
+    // Row 4: MBS + lion face
+    w.set_attr(gray);
+    let _ = w.write_str("   .======. | || || || |");
+    w.set_attr(cyan);
+    let _ = w.write_str(" ~ ~");
+    w.set_attr(yellow);
+    let _ = w.write_str("       | .    . |\n");
 
-    // MBS towers + Merlion body (green fish scales)
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("   |  |    |  | || || || |");
-    w.set_attr(color_attr(Color::LightGreen, Color::Black));
-    let _ = w.write_str("                   /| |  | |\\\n");
+    // Row 5: MBS + open mouth with water
+    w.set_attr(gray);
+    let _ = w.write_str("  / ____  \\| || || || |");
+    w.set_attr(cyan);
+    let _ = w.write_str("~ . ~");
+    w.set_attr(yellow);
+    let _ = w.write_str("  .---|  (__)  |\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("   |  |    |  | || || || |");
-    w.set_attr(color_attr(Color::LightGreen, Color::Black));
-    let _ = w.write_str("                  / | |  | | \\\n");
+    // Row 6: MBS + mouth/jaw
+    w.set_attr(gray);
+    let _ = w.write_str(" |  |   |  | || || || |");
+    w.set_attr(cyan);
+    let _ = w.write_str(" ~~~~");
+    w.set_attr(yellow);
+    let _ = w.write_str(" <     |   __  |\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("   |  |____|  | || || || |");
-    w.set_attr(color_attr(Color::LightGreen, Color::Black));
-    let _ = w.write_str("                 {  \\ `--' /  }\n");
+    // Row 7: MBS + neck/chest
+    w.set_attr(gray);
+    let _ = w.write_str(" |  |   |  | || || || |");
+    w.set_attr(yellow);
+    let _ = w.write_str("       `---|  |  | |\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("   |__________|_||_||_||_|");
-    w.set_attr(color_attr(Color::Cyan, Color::Black));
-    let _ = w.write_str("                  \\/========\\/\n");
+    // Row 8-9: MBS + fish body with scales
+    w.set_attr(gray);
+    let _ = w.write_str(" |  |___|  | || || || |");
+    w.set_attr(green);
+    let _ = w.write_str("          /| )|  |( |\\\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("    |  |  |   |  |  |  |  ");
-    w.set_attr(color_attr(Color::Cyan, Color::Black));
-    let _ = w.write_str("                   | ><  >< |\n");
+    w.set_attr(gray);
+    let _ = w.write_str(" |_________|_||_||_||_|");
+    w.set_attr(green);
+    let _ = w.write_str("         | | )|  |( | |\n");
 
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("    |__|__|   |__|__|__|  ");
-    w.set_attr(color_attr(Color::Cyan, Color::Black));
-    let _ = w.write_str("                    \\________/\n");
+    // Row 10-11: MBS base + fish tail
+    w.set_attr(gray);
+    let _ = w.write_str("  | | | |   | | | | | ");
+    w.set_attr(green);
+    let _ = w.write_str("          \\  \\|  |/  /\n");
+
+    w.set_attr(gray);
+    let _ = w.write_str("  |_|_|_|   |_|_|_|_| ");
+    w.set_attr(cyan);
+    let _ = w.write_str("           | |====| |\n");
+
+    // Row 12: space + tail bottom
+    let _ = w.write_str("                                          \\| ><<> |/\n");
+    let _ = w.write_str("                                           \\______/\n");
 
     // Waves
-    w.set_attr(color_attr(Color::Blue, Color::Black));
+    w.set_attr(blue);
     let _ = w.write_str(" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
     // Labels
-    w.set_attr(color_attr(Color::DarkGray, Color::Black));
-    let _ = w.write_str("    Marina Bay Sands");
-    w.set_attr(color_attr(Color::Yellow, Color::Black));
-    let _ = w.write_str("              The Merlion");
-    w.set_attr(color_attr(Color::White, Color::Black));
-    let _ = w.write_str("     MerlionOS v0.1.0\n");
+    w.set_attr(gray);
+    let _ = w.write_str("   Marina Bay Sands");
+    w.set_attr(yellow);
+    let _ = w.write_str("            The Merlion");
+    w.set_attr(white);
+    let _ = w.write_str("      MerlionOS v0.1.0\n");
 
-    w.set_attr(color_attr(Color::LightGray, Color::Black));
-    let _ = w.write_str("\n");
+    w.set_attr(default);
 }
 
 #[macro_export]
