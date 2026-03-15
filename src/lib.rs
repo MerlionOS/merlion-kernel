@@ -4,7 +4,9 @@
 extern crate alloc;
 
 pub mod acpi;
+pub mod acpi_tables;
 pub mod agent;
+pub mod ahci;
 pub mod ai_heal;
 pub mod ai_man;
 pub mod ai_monitor;
@@ -21,6 +23,7 @@ pub mod boot_info_ext;
 pub mod calc;
 pub mod coreutils;
 pub mod demo;
+pub mod dhcp;
 pub mod diskfs;
 pub mod driver;
 pub mod editor;
