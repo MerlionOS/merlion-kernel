@@ -899,6 +899,45 @@ pub fn list_sockets() -> Vec<(usize, Ipv4Addr, u16, Ipv4Addr, u16, TcpState)> {
 }
 
 // ---------------------------------------------------------------------------
+// Server-side socket registration
+// ---------------------------------------------------------------------------
+
+/// Register an already-established TCP connection in the socket table.
+///
+/// Used by the built-in HTTP server ([`crate::httpd`]) which performs the
+/// 3-way handshake manually and then needs a socket index to send data
+/// and close the connection through the normal [`send`]/[`close`] API.
+///
+/// Returns the socket index.
+pub fn register_established(
+    local_ip: Ipv4Addr,
+    local_port: u16,
+    remote_ip: Ipv4Addr,
+    remote_port: u16,
+    seq_num: u32,
+    ack_num: u32,
+) -> usize {
+    let mut sockets = SOCKETS.lock();
+    let idx = sockets.len();
+    sockets.push(TcpSocket {
+        state: TcpState::Established,
+        seq_num,
+        ack_num,
+        local_ip,
+        local_port,
+        remote_ip,
+        remote_port,
+        send_buf: Vec::new(),
+        recv_buf: Vec::new(),
+    });
+    crate::serial_println!(
+        "[tcp_real] registered server socket {} ({}:{} <- {}:{})",
+        idx, local_ip, local_port, remote_ip, remote_port
+    );
+    idx
+}
+
+// ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
 
