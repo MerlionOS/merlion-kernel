@@ -6,7 +6,7 @@ MerlionOS is a Singapore-inspired AI-native hobby operating system kernel writte
 
 > **Born for AI. Built by AI.** — 生于AI，成于AI
 
-It boots in QEMU, runs a shell with 65+ commands, supports preemptive multitasking, user-mode processes, IPC, VFS, networking, graphics, and ACPI power management. 39 source modules, ~6200 lines of Rust.
+It boots in QEMU, runs a shell with 90+ commands, and supports preemptive multitasking, user-mode processes with per-process page tables, IPC, VFS, real virtio-blk/net drivers, ELF loading, TCP/IP, framebuffer graphics, AI native features (NL shell, agents, self-healing), and ACPI power management. 58 source modules, ~9700 lines of Rust.
 
 ## Build & Run
 

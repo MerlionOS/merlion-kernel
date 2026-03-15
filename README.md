@@ -108,12 +108,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 70 — Roadmap Complete)
+## Current Status
 
-- **56 source modules, ~8600 lines of Rust**
-- **All 70 kernel phases + 7 AI phases complete**
-- **90+ shell commands**
-- Full roadmap delivered: ELF parser, userlib, AI man pages, boot info
+- **58 source modules, ~9700 lines of Rust**
+- **All roadmap phases complete + 3 deep-dive phases**
+- **90+ shell commands**, `demo` runs full showcase
+- Real virtio-blk disk I/O, ELF loading, virtio-net with ARP/ICMP
 
 ## Roadmap
 

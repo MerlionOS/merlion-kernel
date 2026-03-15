@@ -15,6 +15,7 @@ pub mod allocator;
 pub mod apic_timer;
 pub mod blkdev;
 pub mod boot_info_ext;
+pub mod demo;
 pub mod driver;
 pub mod elf;
 pub mod elf_loader;
