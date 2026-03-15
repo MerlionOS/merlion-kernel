@@ -70,7 +70,7 @@ impl PciDevice {
 }
 
 /// Read a 32-bit value from PCI configuration space.
-fn pci_read32(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
+pub fn pci_read32(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
     let addr: u32 = 0x8000_0000
         | ((bus as u32) << 16)
         | ((device as u32) << 11)
