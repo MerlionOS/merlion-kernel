@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -758,8 +758,14 @@ fn dispatch(cmd: &str) {
         "clear" => crate::vga::WRITER.lock().clear(),
         "panic" => panic!("user-triggered panic via shell"),
         _ => {
-            println!("unknown command: {}", cmd);
-            println!("type 'help' for commands");
+            // Try AI natural language interpretation
+            if let Some(ai_cmd) = ai_shell::interpret(cmd) {
+                println!("{}", ai_shell::format_hint(cmd, &ai_cmd));
+                dispatch(&ai_cmd);
+            } else {
+                println!("unknown command: {}", cmd);
+                println!("type 'help' for commands");
+            }
         }
     }
 }
