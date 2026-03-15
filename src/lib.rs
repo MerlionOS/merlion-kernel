@@ -35,6 +35,7 @@ pub mod fat;
 pub mod fbconsole;
 pub mod fd;
 pub mod font;
+pub mod forth;
 pub mod fortune;
 pub mod framebuf;
 pub mod gdt;

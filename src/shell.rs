@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -283,6 +283,7 @@ pub fn dispatch(cmd: &str) {
             println!("  version    - version and build info");
             println!("  demo       - run full system demo");
             println!("  snake      - play Snake game!");
+            println!("  forth      - Forth programming language");
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
@@ -1397,6 +1398,11 @@ pub fn dispatch(cmd: &str) {
             print!("{}", crate::version::build_info());
         }
         "demo" => demo::run(),
+        "forth" => {
+            forth::enter();
+            while forth::is_running() { x86_64::instructions::hlt(); }
+            println!("Forth exited.");
+        }
         "snake" => {
             snake::run();
             // Restore shell screen after game
