@@ -41,6 +41,7 @@ pub mod net;
 pub mod netproto;
 pub mod paging;
 pub mod pci;
+pub mod pipe_exec;
 pub mod process;
 pub mod ramdisk;
 pub mod rtc;

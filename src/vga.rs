@@ -258,6 +258,15 @@ pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
     use x86_64::instructions::interrupts;
 
+    // If pipe is capturing, tee output to capture buffer
+    if crate::pipe_exec::is_capturing() {
+        let mut buf = alloc::string::String::new();
+        let _ = buf.write_fmt(args);
+        crate::pipe_exec::try_capture(&buf);
+        // Don't print to VGA during pipe capture
+        return;
+    }
+
     interrupts::without_interrupts(|| {
         WRITER.lock().write_fmt(args).unwrap();
     });

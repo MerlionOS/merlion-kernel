@@ -104,6 +104,9 @@ pub fn handle_key_event(event: KeyEvent) {
                             execute_single(sub);
                         }
                     }
+                } else if cmd.contains('|') {
+                    // Pipe: cmd1 | cmd2 | cmd3
+                    crate::pipe_exec::execute_pipeline(cmd);
                 } else {
                     execute_single(cmd);
                 }
