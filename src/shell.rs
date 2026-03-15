@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -237,6 +237,12 @@ pub fn dispatch(cmd: &str) {
             println!("  blkdevs    - block devices");
             println!("  diskread <s> - read sector from virtio disk");
             println!("  diskwrite <s> <d> - write to virtio disk");
+            println!("  diskfmt    - format disk as MF16 (persistent)");
+            println!("  diskls     - list files on disk");
+            println!("  disksave <n> <d> - save file to disk");
+            println!("  diskload <n> - load file from disk");
+            println!("  diskrm <n>  - delete file from disk");
+            println!("  diskinfo   - disk filesystem status");
             println!("  fatfmt     - format RAM disk as MF16");
             println!("  fatls      - list MF16 files");
             println!("  fatw <n> <d> - write MF16 file");
@@ -853,6 +859,58 @@ pub fn dispatch(cmd: &str) {
             } else {
                 println!("Usage: diskwrite <sector> <data>");
             }
+        }
+        "diskfmt" => {
+            match diskfs::format() {
+                Ok(()) => println!("Disk formatted as MF16 (persistent)."),
+                Err(e) => println!("diskfmt: {}", e),
+            }
+        }
+        "diskls" => {
+            match diskfs::list_files() {
+                Ok(files) if files.is_empty() => println!("No files on disk. Use 'diskfmt' first."),
+                Ok(files) => {
+                    println!("  \x1b[1mSIZE  NAME\x1b[0m");
+                    for f in files {
+                        println!("  {:>5}  {}", f.size, f.name);
+                    }
+                }
+                Err(e) => println!("diskls: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("disksave ") => {
+            let rest = cmd[9..].trim();
+            if let Some((name, data)) = rest.split_once(' ') {
+                match diskfs::write_file(name, data.as_bytes()) {
+                    Ok(()) => println!("Saved '{}' to disk ({} bytes, persistent)", name, data.len()),
+                    Err(e) => println!("disksave: {}", e),
+                }
+            } else {
+                println!("Usage: disksave <name> <data>");
+            }
+        }
+        cmd if cmd.starts_with("diskload ") => {
+            let name = cmd[9..].trim();
+            match diskfs::read_file(name) {
+                Ok(data) => {
+                    if let Ok(s) = core::str::from_utf8(&data) {
+                        println!("{}", s);
+                    } else {
+                        println!("({} bytes, binary)", data.len());
+                    }
+                }
+                Err(e) => println!("diskload: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("diskrm ") => {
+            let name = cmd[7..].trim();
+            match diskfs::delete_file(name) {
+                Ok(()) => println!("Deleted '{}' from disk", name),
+                Err(e) => println!("diskrm: {}", e),
+            }
+        }
+        "diskinfo" => {
+            println!("{}", diskfs::info());
         }
         "blkdevs" => {
             let devs = blkdev::list();
