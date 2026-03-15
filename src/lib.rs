@@ -49,6 +49,7 @@ pub mod keyboard;
 pub mod ksyms;
 pub mod locks;
 pub mod log;
+pub mod login;
 pub mod memory;
 pub mod module;
 pub mod net;

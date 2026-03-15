@@ -90,9 +90,14 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     serial_println!("[ok] RTC: {}", dt);
 
     klog_println!("Kernel initialization complete.");
-    println!();
+    serial_println!("Kernel initialization complete.");
+
+    // Show login screen, then enter shell after login
+    login::show();
+    while login::is_logging_in() { x86_64::instructions::hlt(); }
+
     println!("Type 'help' for available commands.");
-    serial_println!("Kernel initialization complete. Shell active.");
+    serial_println!("Shell active.");
     shell::prompt();
 
     halt_loop();
