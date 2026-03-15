@@ -104,11 +104,11 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 16)
+## Current Status (Phase 17)
 
-- 27 source modules, ~4100 lines of Rust
-- User-space syscall library with Rust wrappers
-- SMP: CPUID detection, CPU brand/features, per-CPU state
+- 27 source modules, ~4500 lines of Rust
+- Shell with command history (up/down arrows), shift, echo
+- Extended keyboard: arrow keys, shift modifier, symbols
 - Networking, PCI, RAM disk, framebuffer, and more
 
 ## Roadmap
@@ -131,3 +131,4 @@ src/
 | 14 | Networking stack: IPv4, UDP, loopback | Done |
 | 15 | SMP: CPUID, APIC, per-CPU state, `cpuinfo` | Done |
 | 16 | User-space syscall library (ulib) | Done |
+| 17 | Shell: history, arrow keys, shift, echo | Done |

@@ -106,8 +106,8 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
 
     let scancode: u8 = unsafe { Port::new(0x60).read() };
 
-    if let Some(ch) = keyboard::scancode_to_ascii(scancode) {
-        crate::shell::handle_key(ch);
+    if let Some(event) = keyboard::process_scancode(scancode) {
+        crate::shell::handle_key_event(event);
     }
 
     unsafe {

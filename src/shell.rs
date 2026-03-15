@@ -1,21 +1,63 @@
-/// Interactive kernel shell.
-/// Processes keyboard input and dispatches commands.
+/// Interactive kernel shell with command history.
+/// Supports arrow keys (up/down for history, left/right planned),
+/// shift for uppercase, and output redirection (cmd > file).
 
 use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp};
+use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
+const HISTORY_SIZE: usize = 16;
 
-static INPUT: Mutex<InputBuffer> = Mutex::new(InputBuffer::new());
+static SHELL: Mutex<ShellState> = Mutex::new(ShellState::new());
 
-struct InputBuffer {
+struct ShellState {
     buf: [u8; MAX_INPUT],
     len: usize,
+    history: [[u8; MAX_INPUT]; HISTORY_SIZE],
+    history_lens: [usize; HISTORY_SIZE],
+    history_count: usize,
+    history_pos: usize, // browsing position (history_count = current input)
 }
 
-impl InputBuffer {
+impl ShellState {
     const fn new() -> Self {
-        Self { buf: [0; MAX_INPUT], len: 0 }
+        Self {
+            buf: [0; MAX_INPUT],
+            len: 0,
+            history: [[0; MAX_INPUT]; HISTORY_SIZE],
+            history_lens: [0; HISTORY_SIZE],
+            history_count: 0,
+            history_pos: 0,
+        }
+    }
+
+    fn push_history(&mut self) {
+        if self.len == 0 { return; }
+        let idx = self.history_count % HISTORY_SIZE;
+        self.history[idx][..self.len].copy_from_slice(&self.buf[..self.len]);
+        self.history_lens[idx] = self.len;
+        self.history_count += 1;
+        self.history_pos = self.history_count;
+    }
+
+    fn clear_line(&mut self) {
+        // Erase current input on screen
+        for _ in 0..self.len {
+            print!("\x08 \x08");
+        }
+        self.len = 0;
+    }
+
+    fn set_from_history(&mut self, idx: usize) {
+        self.clear_line();
+        let hist_idx = idx % HISTORY_SIZE;
+        let hlen = self.history_lens[hist_idx];
+        self.buf[..hlen].copy_from_slice(&self.history[hist_idx][..hlen]);
+        self.len = hlen;
+        if let Ok(s) = core::str::from_utf8(&self.buf[..self.len]) {
+            print!("{}", s);
+        }
     }
 }
 
@@ -23,34 +65,67 @@ pub fn prompt() {
     print!("merlion> ");
 }
 
-pub fn handle_key(ch: char) {
-    let mut input = INPUT.lock();
+/// Handle a keyboard event from the interrupt handler.
+pub fn handle_key_event(event: KeyEvent) {
+    let mut shell = SHELL.lock();
 
-    match ch {
-        '\n' => {
+    match event {
+        KeyEvent::Char('\n') => {
             println!();
-            let cmd = core::str::from_utf8(&input.buf[..input.len])
+            // Copy command to a local buffer to avoid borrow issues
+            let mut cmd_buf = [0u8; MAX_INPUT];
+            let cmd_len = shell.len;
+            cmd_buf[..cmd_len].copy_from_slice(&shell.buf[..cmd_len]);
+            shell.push_history();
+            shell.len = 0;
+            shell.history_pos = shell.history_count;
+            drop(shell);
+
+            let cmd = core::str::from_utf8(&cmd_buf[..cmd_len])
                 .unwrap_or("")
                 .trim();
             if !cmd.is_empty() {
-                dispatch(cmd);
+                if let Some((left, right)) = cmd.split_once(" > ") {
+                    dispatch(left.trim());
+                    let _ = vfs::write(right.trim(), left.trim());
+                } else {
+                    dispatch(cmd);
+                }
             }
-            input.len = 0;
-            drop(input);
             prompt();
         }
-        '\x08' => {
-            if input.len > 0 {
-                input.len -= 1;
-                print!("\x08");
+        KeyEvent::Char('\x08') => {
+            if shell.len > 0 {
+                shell.len -= 1;
+                print!("\x08 \x08");
             }
         }
-        ch if ch.is_ascii() && !ch.is_ascii_control() => {
-            let len = input.len;
+        KeyEvent::Char(ch) if ch.is_ascii() && !ch.is_ascii_control() => {
+            let len = shell.len;
             if len < MAX_INPUT {
-                input.buf[len] = ch as u8;
-                input.len = len + 1;
+                shell.buf[len] = ch as u8;
+                shell.len = len + 1;
                 print!("{}", ch);
+            }
+        }
+        KeyEvent::ArrowUp => {
+            if shell.history_pos > 0 && shell.history_count > 0 {
+                let new_pos = shell.history_pos - 1;
+                if new_pos < shell.history_count && shell.history_count - new_pos <= HISTORY_SIZE {
+                    shell.history_pos = new_pos;
+                    shell.set_from_history(new_pos);
+                }
+            }
+        }
+        KeyEvent::ArrowDown => {
+            if shell.history_pos < shell.history_count {
+                let new_pos = shell.history_pos + 1;
+                shell.history_pos = new_pos;
+                if new_pos < shell.history_count {
+                    shell.set_from_history(new_pos);
+                } else {
+                    shell.clear_line();
+                }
             }
         }
         _ => {}
@@ -95,6 +170,8 @@ fn dispatch(cmd: &str) {
             println!("  dsave <n> <d> - save file to disk");
             println!("  dload <n>  - load file from disk");
             println!("  dls        - list disk files");
+            println!("  echo <msg> - print a message");
+            println!("  history    - command history");
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
             println!("  shutdown   - power off");
@@ -324,6 +401,23 @@ fn dispatch(cmd: &str) {
                     }
                 }
                 None => println!("dload: file '{}' not found", name),
+            }
+        }
+        cmd if cmd.starts_with("echo ") => {
+            println!("{}", cmd[5..].trim());
+        }
+        "echo" => println!(),
+        "history" => {
+            let shell = SHELL.lock();
+            let start = if shell.history_count > HISTORY_SIZE {
+                shell.history_count - HISTORY_SIZE
+            } else { 0 };
+            for i in start..shell.history_count {
+                let idx = i % HISTORY_SIZE;
+                let len = shell.history_lens[idx];
+                if let Ok(s) = core::str::from_utf8(&shell.history[idx][..len]) {
+                    println!("  {:3}  {}", i + 1, s);
+                }
             }
         }
         "gfx" => {
