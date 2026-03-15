@@ -68,6 +68,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     apic_timer::init();
     semfs::init();
     ai_proxy::init();
+    agent::init();
+    println!("[ok] AI subsystem ready");
+    serial_println!("[ok] AI agents + proxy initialized");
     println!("[ok] SMP: {} CPU(s) online", smp::online_cpus());
     serial_println!("[ok] SMP initialized");
 

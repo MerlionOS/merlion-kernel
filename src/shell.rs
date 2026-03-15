@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, semfs};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -178,7 +178,11 @@ fn dispatch(cmd: &str) {
             println!("  tag <p> <t> - tag a file");
             println!("  tags <p>   - show file tags");
             println!("  search <q> - search files by tag");
-            println!("  aistatus   - AI proxy status");
+            println!("  explain <t> - explain a kernel concept");
+            println!("  heal       - AI self-healing diagnosis");
+            println!("  agents     - list AI agents");
+            println!("  ask <a> <m> - send message to an agent");
+            println!("  aistatus   - AI subsystem status");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
             println!("  lsmod      - list kernel modules");
@@ -813,10 +817,48 @@ fn dispatch(cmd: &str) {
                 }
             }
         }
+        cmd if cmd.starts_with("explain ") => {
+            let topic = cmd[8..].trim();
+            println!("{}", ai_syscall::explain(topic));
+        }
+        "heal" => {
+            println!("\x1b[1m=== AI Self-Healing Diagnosis ===\x1b[0m");
+            let diagnoses = ai_heal::auto_recover();
+            for d in &diagnoses {
+                print!("{}", ai_heal::format_diagnosis(d));
+            }
+        }
+        "agents" => {
+            let agents = agent::list();
+            if agents.is_empty() {
+                println!("No agents registered.");
+            } else {
+                println!("  \x1b[1mNAME      STATE    TICKS  DESCRIPTION\x1b[0m");
+                for a in agents {
+                    let state = match a.state {
+                        agent::AgentState::Running => "\x1b[32mrunning\x1b[0m",
+                        agent::AgentState::Paused => "\x1b[90mpaused \x1b[0m",
+                    };
+                    println!("  {:<9} {} {:>5}  {}", a.name, state, a.ticks, a.description);
+                }
+            }
+        }
+        cmd if cmd.starts_with("ask ") => {
+            let rest = cmd[4..].trim();
+            if let Some((agent_name, msg)) = rest.split_once(' ') {
+                match agent::send_message(agent_name, msg) {
+                    Some(response) => println!("\x1b[36m[{}]\x1b[0m {}", agent_name, response),
+                    None => println!("Agent '{}' not found or paused", agent_name),
+                }
+            } else {
+                println!("Usage: ask <agent> <message>");
+            }
+        }
         "aistatus" => {
-            println!("AI Proxy:  {}", ai_proxy::status());
-            println!("AI Shell:  keyword engine (built-in)");
-            println!("Sem. VFS:  {} tagged files", semfs::list_all().len());
+            println!("AI Proxy:   {}", ai_proxy::status());
+            println!("AI Shell:   keyword engine (built-in)");
+            println!("AI Agents:  {} registered", agent::list().len());
+            println!("Sem. VFS:   {} tagged files", semfs::list_all().len());
         }
 
         "panic" => panic!("user-triggered panic via shell"),

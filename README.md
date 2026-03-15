@@ -108,14 +108,13 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 40 — Complete)
+## Current Status (AI Native OS — Phase G Complete)
 
-- **39 source modules, ~6200 lines of Rust**
-- **All 40 roadmap phases complete across 5 milestones**
-- **65+ shell commands**
-- Monolithic kernel with preemptive multitasking, user-mode, VFS,
-  IPC, networking, FAT16, graphics, PCI, CPUID, APIC timer,
-  loadable modules, demand paging, slab allocator, file descriptors
+- **46 source modules, ~7400 lines of Rust**
+- **All 40 kernel phases + 7 AI phases complete**
+- **75+ shell commands**
+- Monolithic AI-native kernel: NL shell, LLM proxy, semantic VFS,
+  AI monitor, self-healing, agent framework, concept explainer
 
 ## Roadmap
 

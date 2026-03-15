@@ -4,9 +4,12 @@
 extern crate alloc;
 
 pub mod acpi;
+pub mod agent;
+pub mod ai_heal;
 pub mod ai_monitor;
 pub mod ai_proxy;
 pub mod ai_shell;
+pub mod ai_syscall;
 pub mod allocator;
 pub mod apic_timer;
 pub mod blkdev;
