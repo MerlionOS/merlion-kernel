@@ -182,6 +182,13 @@ fn dispatch(cmd: &str) {
             println!("  dload <n>  - load file from disk");
             println!("  dls        - list disk files");
             println!("  echo <msg> - print a message");
+            println!("  env        - environment variables");
+            println!("  set K=V    - set variable");
+            println!("  alias n=c  - set alias");
+            println!("  neofetch   - system summary");
+            println!("  uname      - kernel version");
+            println!("  whoami     - current user");
+            println!("  hostname   - system hostname");
             println!("  history    - command history");
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
@@ -448,6 +455,19 @@ fn dispatch(cmd: &str) {
                 println!("  {}='{}'", name, cmd);
             }
         }
+        "whoami" => {
+            println!("{}", env::get("USER").unwrap_or_else(|| alloc::string::String::from("root")));
+        }
+        "hostname" => {
+            println!("{}", env::get("HOSTNAME").unwrap_or_else(|| alloc::string::String::from("merlion")));
+        }
+        "uname" | "uname -a" => {
+            let dt = rtc::read();
+            println!("MerlionOS merlion 0.2.0 {} x86_64", dt);
+        }
+        "neofetch" => {
+            neofetch();
+        }
         "history" => {
             let shell = SHELL.lock();
             let start = if shell.history_count > HISTORY_SIZE {
@@ -573,4 +593,37 @@ fn consumer_task() {
     }
     ipc::destroy(ch);
     println!("[consumer] done, channel closed");
+}
+
+fn neofetch() {
+    let features = smp::detect_features();
+    let mem = memory::stats();
+    let heap = allocator::stats();
+    let (h, m, s) = timer::uptime_hms();
+    let dt = rtc::read();
+    let user = env::get("USER").unwrap_or_else(|| alloc::string::String::from("root"));
+    let host = env::get("HOSTNAME").unwrap_or_else(|| alloc::string::String::from("merlion"));
+    let tasks = task::list();
+
+    // Logo on the left, info on the right
+    println!("\x1b[36m  ▄▄▄      ▄▄▄       \x1b[0m {}@{}", user, host);
+    println!("\x1b[36m  ████▄  ▄████       \x1b[0m ─────────────────────");
+    println!("\x1b[36m  ███▀████▀███       \x1b[0m \x1b[36mOS\x1b[0m:      MerlionOS 0.2.0");
+    println!("\x1b[36m  ███  ▀▀  ███       \x1b[0m \x1b[36mKernel\x1b[0m:  MerlionOS x86_64");
+    println!("\x1b[36m  ███      ███       \x1b[0m \x1b[36mCPU\x1b[0m:     {}", features.brand);
+    println!("                      \x1b[36mMemory\x1b[0m:  {} KiB / {} KiB",
+        mem.allocated_frames * 4, mem.total_usable_bytes / 1024);
+    println!("                      \x1b[36mHeap\x1b[0m:    {} / {} bytes",
+        heap.used, heap.total);
+    println!("                      \x1b[36mUptime\x1b[0m:  {:02}:{:02}:{:02}", h, m, s);
+    println!("                      \x1b[36mDate\x1b[0m:    {}", dt);
+    println!("                      \x1b[36mTasks\x1b[0m:   {}", tasks.len());
+    println!("                      \x1b[36mShell\x1b[0m:   msh (MerlionOS Shell)");
+    println!();
+    // Color palette
+    print!("                      ");
+    for i in 0..8u8 {
+        print!("\x1b[{}m  █\x1b[0m", 30 + i);
+    }
+    println!();
 }

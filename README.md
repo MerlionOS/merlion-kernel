@@ -104,11 +104,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 18)
+## Current Status (Phase 19)
 
-- 28 source modules, ~4800 lines of Rust
-- Environment variables ($VAR expansion), aliases
-- Shell: command history, arrow keys, shift, echo, env, alias
+- 28 source modules, ~5000 lines of Rust
+- `neofetch`-style system info display with logo
+- `uname`, `whoami`, `hostname` commands
+- 40+ shell commands total
 - Networking, PCI, RAM disk, framebuffer, and more
 
 ## Roadmap
@@ -133,3 +134,4 @@ src/
 | 16 | User-space syscall library (ulib) | Done |
 | 17 | Shell: history, arrow keys, shift, echo | Done |
 | 18 | Environment variables, aliases, $VAR expansion | Done |
+| 19 | neofetch, uname, whoami, hostname | Done |
