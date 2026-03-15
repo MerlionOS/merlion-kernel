@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -160,6 +160,9 @@ fn dispatch(cmd: &str) {
             println!("  cat <path> - read file");
             println!("  write <path> <data> - write to file");
             println!("  rm <path>  - remove file");
+            println!("  open <p>   - open file descriptor");
+            println!("  close <fd> - close file descriptor");
+            println!("  lsof       - list open file descriptors");
             println!("System commands:");
             println!("  info       - system information");
             println!("  date       - current date and time");
@@ -336,6 +339,32 @@ fn dispatch(cmd: &str) {
         }
 
         // --- System ---
+        cmd if cmd.starts_with("open ") => {
+            let path = cmd[5..].trim();
+            match fd::open(path) {
+                Ok(n) => println!("fd {} opened for {}", n, path),
+                Err(e) => println!("open: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("close ") => {
+            if let Ok(n) = cmd[6..].trim().parse::<usize>() {
+                match fd::close(n) {
+                    Ok(()) => println!("fd {} closed", n),
+                    Err(e) => println!("close: {}", e),
+                }
+            }
+        }
+        "lsof" => {
+            let fds = fd::list_open();
+            if fds.is_empty() {
+                println!("No open file descriptors.");
+            } else {
+                println!("  \x1b[1mFD  TYPE    PATH\x1b[0m");
+                for (n, path, kind) in fds {
+                    println!("  {:2}  {:<7} {}", n, kind, path);
+                }
+            }
+        }
         "slabinfo" => {
             let caches = slab::stats();
             if caches.is_empty() {

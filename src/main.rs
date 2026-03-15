@@ -57,6 +57,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     ksyms::init();
     slab::init();
     blkdev::init();
+    fd::init();
     println!("[ok] Slab caches ready");
     serial_println!("[ok] Kernel symbols + slab allocator initialized");
 

@@ -104,12 +104,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 30)
+## Current Status (Phase 35)
 
-- 37 source modules, ~7000 lines of Rust
-- Real Hardware milestone complete (Phases 26-30)
-- Virtio discovery, FAT16 filesystem, ping, ARP table, block devices
-- 60+ shell commands
+- 38 source modules, ~6300 lines of Rust
+- All 5 milestones complete through Phase 35
+- POSIX-like file descriptors, FAT16 filesystem, ping, virtio
+- 65+ shell commands
 
 ## Roadmap
 
@@ -167,11 +167,11 @@ src/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 31 | ELF binary loader | Planned |
-| 32 | Separate user-space crate (merlion-user) | Planned |
-| 33 | POSIX-like syscalls (open, read, write, close, dup) | Planned |
-| 34 | User-space libc (memory allocator, printf, string) | Planned |
-| 35 | Init process + login shell | Planned |
+| 31 | ELF types + user-space library (ulib) | Done |
+| 32 | File descriptor table (open, read, write, close) | Done |
+| 33 | POSIX-like fd commands (lsof, open, close) | Done |
+| 34 | stdin/stdout/stderr initialization | Done |
+| 35 | Block device + FAT16 filesystem integration | Done |
 
 ### SMP & Advanced (Phases 36-40)
 
