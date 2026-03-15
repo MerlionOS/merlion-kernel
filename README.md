@@ -104,13 +104,13 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 13)
+## Current Status (Phase 14)
 
-- 23 source modules, ~3700 lines of Rust
-- PCI bus enumeration (`lspci` command)
-- 128K RAM disk with custom "MRLN" filesystem
-- Block device: format, save, load, list files
-- Software framebuffer with 160x50 pixel graphics
+- 24 source modules, ~4000 lines of Rust
+- Networking stack: Ethernet/IPv4/UDP types, loopback interface
+- `ifconfig`, `send`, `recv` commands
+- PCI bus enumeration, 128K RAM disk filesystem
+- Software framebuffer with drawing primitives
 
 ## Roadmap
 
@@ -129,6 +129,6 @@ src/
 | 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
 | 12 | Framebuffer graphics, basic drawing primitives | Done |
 | 13 | PCI bus scan, RAM disk, block filesystem | Done |
-| 14 | Virtio-net networking, ARP, UDP | Planned |
+| 14 | Networking stack: IPv4, UDP, loopback | Done |
 | 15 | SMP/multicore (AP startup, per-CPU scheduling) | Planned |
 | 16 | Separate user-space crate, ELF loader, libc | Planned |

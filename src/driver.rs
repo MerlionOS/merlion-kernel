@@ -75,4 +75,5 @@ pub fn init() {
     register("ps2-kbd", DriverKind::Keyboard);
     register("vfs", DriverKind::Filesystem);
     register("ramdisk", DriverKind::Block);
+    register("net-lo", DriverKind::Serial); // loopback network
 }

@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -85,6 +85,9 @@ fn dispatch(cmd: &str) {
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
             println!("  clear      - clear screen");
+            println!("  ifconfig   - network interface info");
+            println!("  send <msg> - send UDP loopback packet");
+            println!("  recv       - receive queued packets");
             println!("  lspci      - list PCI devices");
             println!("  disk       - RAM disk status");
             println!("  format     - format RAM disk");
@@ -224,6 +227,29 @@ fn dispatch(cmd: &str) {
             println!("  \x1b[1mNAME        KIND      STATUS\x1b[0m");
             for (name, kind, status) in driver::list() {
                 println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
+            }
+        }
+        "ifconfig" => {
+            let n = net::NET.lock();
+            println!("{}", n.ifconfig());
+        }
+        cmd if cmd.starts_with("send ") => {
+            let msg = cmd[5..].trim();
+            let mut n = net::NET.lock();
+            n.send_udp(net::Ipv4Addr::LOOPBACK, 8080, 12345, msg.as_bytes());
+            println!("Sent {} bytes to 127.0.0.1:8080", msg.len());
+        }
+        "recv" => {
+            let mut n = net::NET.lock();
+            let packets = n.recv();
+            if packets.is_empty() {
+                println!("No packets in queue.");
+            } else {
+                for p in packets {
+                    let data = core::str::from_utf8(&p.data).unwrap_or("(binary)");
+                    println!("  {} {}:{} -> {}:{} [{}]",
+                        p.protocol, p.src_ip, p.src_port, p.dst_ip, p.dst_port, data);
+                }
             }
         }
         "lspci" => {

@@ -13,6 +13,7 @@ pub mod ipc;
 pub mod keyboard;
 pub mod log;
 pub mod memory;
+pub mod net;
 pub mod pci;
 pub mod process;
 pub mod ramdisk;
