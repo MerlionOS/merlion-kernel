@@ -19,6 +19,7 @@ pub mod process;
 pub mod ramdisk;
 pub mod rtc;
 pub mod serial;
+pub mod smp;
 pub mod shell;
 pub mod syscall;
 pub mod task;

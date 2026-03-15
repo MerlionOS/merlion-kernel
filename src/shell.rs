@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -85,6 +85,7 @@ fn dispatch(cmd: &str) {
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
             println!("  clear      - clear screen");
+            println!("  cpuinfo    - CPU features and cores");
             println!("  ifconfig   - network interface info");
             println!("  send <msg> - send UDP loopback packet");
             println!("  recv       - receive queued packets");
@@ -227,6 +228,13 @@ fn dispatch(cmd: &str) {
             println!("  \x1b[1mNAME        KIND      STATUS\x1b[0m");
             for (name, kind, status) in driver::list() {
                 println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
+            }
+        }
+        "cpuinfo" => {
+            println!("{}", smp::cpu_info_string());
+            println!("Online CPUs: {}", smp::online_cpus());
+            for (i, cpu) in smp::cpu_list() {
+                println!("  CPU {} (APIC {}): online", i, cpu.apic_id);
             }
         }
         "ifconfig" => {

@@ -50,6 +50,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] Drivers registered");
     serial_println!("[ok] Drivers registered");
 
+    smp::init();
+    println!("[ok] SMP: {} CPU(s) online", smp::online_cpus());
+    serial_println!("[ok] SMP initialized");
+
     // Show date/time from RTC
     let dt = rtc::read();
     println!("[ok] RTC: {}", dt);
