@@ -165,6 +165,7 @@ fn dispatch(cmd: &str) {
             println!("  date       - current date and time");
             println!("  uptime     - time since boot");
             println!("  heap       - heap stats");
+            println!("  free       - memory summary");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
             println!("  pipe       - IPC demo");
@@ -190,6 +191,7 @@ fn dispatch(cmd: &str) {
             println!("  whoami     - current user");
             println!("  hostname   - system hostname");
             println!("  history    - command history");
+            println!("  sleep <n>  - sleep for n seconds");
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
             println!("  shutdown   - power off");
@@ -218,6 +220,24 @@ fn dispatch(cmd: &str) {
             let stats = allocator::stats();
             println!("Heap: {} used / {} free / {} total bytes",
                 stats.used, stats.free, stats.total);
+        }
+        "free" => {
+            let mem = memory::stats();
+            let heap = allocator::stats();
+            println!("              \x1b[1mtotal       used       free\x1b[0m");
+            println!("Phys:    {:>8} K  {:>8} K  {:>8} K",
+                mem.total_usable_bytes / 1024,
+                mem.allocated_frames * 4,
+                (mem.total_usable_bytes / 1024) - (mem.allocated_frames * 4));
+            println!("Heap:    {:>8}    {:>8}    {:>8}",
+                heap.total, heap.used, heap.free);
+            let rd = ramdisk::RAMDISK.lock();
+            if rd.is_formatted() {
+                let disk_total = 128 * 1024 - 16 * 512;
+                let disk_used = rd.used_bytes();
+                println!("Disk:    {:>8}    {:>8}    {:>8}",
+                    disk_total, disk_used, disk_total - disk_used);
+            }
         }
         "ps" => {
             println!("  PID  STATE    NAME");
@@ -479,6 +499,18 @@ fn dispatch(cmd: &str) {
                 if let Ok(s) = core::str::from_utf8(&shell.history[idx][..len]) {
                     println!("  {:3}  {}", i + 1, s);
                 }
+            }
+        }
+        cmd if cmd.starts_with("sleep ") => {
+            if let Ok(secs) = cmd[6..].trim().parse::<u64>() {
+                let target = timer::ticks() + secs * timer::PIT_FREQUENCY_HZ;
+                print!("Sleeping for {} second(s)...", secs);
+                while timer::ticks() < target {
+                    x86_64::instructions::hlt();
+                }
+                println!(" done.");
+            } else {
+                println!("Usage: sleep <seconds>");
             }
         }
         "gfx" => {

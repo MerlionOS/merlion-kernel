@@ -104,12 +104,11 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 19)
+## Current Status (Phase 20)
 
-- 28 source modules, ~5000 lines of Rust
-- `neofetch`-style system info display with logo
-- `uname`, `whoami`, `hostname` commands
-- 40+ shell commands total
+- 28 source modules, ~5100 lines of Rust
+- `neofetch`, `free`, `sleep`, `uname`, `whoami`, `hostname`
+- 45+ shell commands, environment variables, aliases
 - Networking, PCI, RAM disk, framebuffer, and more
 
 ## Roadmap
@@ -135,3 +134,4 @@ src/
 | 17 | Shell: history, arrow keys, shift, echo | Done |
 | 18 | Environment variables, aliases, $VAR expansion | Done |
 | 19 | neofetch, uname, whoami, hostname | Done |
+| 20 | free, sleep, polished shell experience | Done |
