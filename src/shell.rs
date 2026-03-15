@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env, module, slab, ksyms, paging};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -182,6 +182,14 @@ fn dispatch(cmd: &str) {
             println!("  ifconfig   - network interface info");
             println!("  send <msg> - send UDP loopback packet");
             println!("  recv       - receive queued packets");
+            println!("  ping <ip>  - ping an address");
+            println!("  arp        - ARP table");
+            println!("  virtio     - virtio devices");
+            println!("  blkdevs    - block devices");
+            println!("  fatfmt     - format RAM disk as MF16");
+            println!("  fatls      - list MF16 files");
+            println!("  fatw <n> <d> - write MF16 file");
+            println!("  fatr <n>   - read MF16 file");
             println!("  lspci      - list PCI devices");
             println!("  disk       - RAM disk status");
             println!("  format     - format RAM disk");
@@ -442,6 +450,93 @@ fn dispatch(cmd: &str) {
                     println!("  {} {}:{} -> {}:{} [{}]",
                         p.protocol, p.src_ip, p.src_port, p.dst_ip, p.dst_port, data);
                 }
+            }
+        }
+        cmd if cmd.starts_with("ping ") => {
+            let target = cmd[5..].trim();
+            if let Some(ip) = net::resolve(target) {
+                println!("PING {} ({})...", target, ip);
+                let results = netproto::ping(ip, 3);
+                print!("{}", netproto::format_ping(&results));
+            } else {
+                println!("ping: cannot resolve '{}'", target);
+            }
+        }
+        "arp" => {
+            let entries = netproto::arp_list();
+            if entries.is_empty() {
+                println!("ARP table empty.");
+            } else {
+                println!("  \x1b[1mIP ADDRESS       MAC ADDRESS\x1b[0m");
+                for (ip, mac) in entries {
+                    println!("  {:<16} {}", ip, mac);
+                }
+            }
+        }
+        "virtio" => {
+            let devs = virtio::scan();
+            if devs.is_empty() {
+                println!("No virtio devices found.");
+            } else {
+                for d in devs {
+                    println!("  {}", d.summary());
+                }
+            }
+        }
+        "blkdevs" => {
+            let devs = blkdev::list();
+            if devs.is_empty() {
+                println!("No block devices.");
+            } else {
+                println!("  \x1b[1mNAME    BLOCKS  SIZE\x1b[0m");
+                for d in devs {
+                    println!("  {:<7} {:>6}  {}K", d.name, d.blocks, d.size_kb);
+                }
+            }
+        }
+        "fatfmt" => {
+            let mut rd = ramdisk::RAMDISK.lock();
+            match fat::format(&mut rd.data) {
+                Ok(()) => println!("RAM disk formatted as MF16."),
+                Err(e) => println!("fatfmt: {}", e),
+            }
+        }
+        "fatls" => {
+            let rd = ramdisk::RAMDISK.lock();
+            let files = fat::list_files(&rd.data);
+            if files.is_empty() {
+                println!("No files (use 'fatfmt' first).");
+            } else {
+                println!("  \x1b[1mSIZE  NAME\x1b[0m");
+                for f in files {
+                    println!("  {:>5}  {}", f.size, f.name);
+                }
+            }
+        }
+        cmd if cmd.starts_with("fatw ") => {
+            let rest = cmd[5..].trim();
+            if let Some((name, data)) = rest.split_once(' ') {
+                let mut rd = ramdisk::RAMDISK.lock();
+                match fat::write_file(&mut rd.data, name, data.as_bytes()) {
+                    Ok(()) => println!("Written '{}' ({} bytes)", name, data.len()),
+                    Err(e) => println!("fatw: {}", e),
+                }
+            } else {
+                println!("Usage: fatw <name> <data>");
+            }
+        }
+        cmd if cmd.starts_with("fatr ") => {
+            let name = cmd[5..].trim();
+            let rd = ramdisk::RAMDISK.lock();
+            match fat::read_file(&rd.data, name) {
+                Some(data) => {
+                    if let Ok(s) = core::str::from_utf8(&data) {
+                        println!("{}", s);
+                    } else {
+                        println!("({} bytes, binary)", data.len());
+                    }
+                }
+                None => println!("fatr: '{}' not found", name),
             }
         }
         "lspci" => {

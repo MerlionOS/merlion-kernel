@@ -22,8 +22,8 @@ const MAX_FILE_DATA: usize = DISK_SIZE - DATA_START;
 pub static RAMDISK: Mutex<RamDisk> = Mutex::new(RamDisk::new());
 
 pub struct RamDisk {
-    data: [u8; DISK_SIZE],
-    formatted: bool,
+    pub data: [u8; DISK_SIZE],
+    pub formatted: bool,
 }
 
 /// File header stored in blocks 1-15.

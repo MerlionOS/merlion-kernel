@@ -4,10 +4,12 @@
 extern crate alloc;
 
 pub mod acpi;
-pub mod framebuf;
 pub mod allocator;
+pub mod blkdev;
 pub mod driver;
 pub mod env;
+pub mod fat;
+pub mod framebuf;
 pub mod gdt;
 pub mod interrupts;
 pub mod ipc;
@@ -17,6 +19,7 @@ pub mod log;
 pub mod memory;
 pub mod module;
 pub mod net;
+pub mod netproto;
 pub mod paging;
 pub mod pci;
 pub mod process;
@@ -32,4 +35,5 @@ pub mod testutil;
 pub mod timer;
 pub mod ulib;
 pub mod vfs;
+pub mod virtio;
 pub mod vga;

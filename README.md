@@ -104,12 +104,12 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 25)
+## Current Status (Phase 30)
 
-- 33 source modules, ~5500 lines of Rust
-- Kernel Evolution milestone complete (Phases 21-25)
-- Loadable modules, demand paging, slab allocator, symbol table
-- 50+ shell commands
+- 37 source modules, ~7000 lines of Rust
+- Real Hardware milestone complete (Phases 26-30)
+- Virtio discovery, FAT16 filesystem, ping, ARP table, block devices
+- 60+ shell commands
 
 ## Roadmap
 
@@ -157,11 +157,11 @@ src/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 26 | Virtio-blk driver (real block I/O through QEMU) | Planned |
-| 27 | FAT16 filesystem on virtio-blk disk | Planned |
-| 28 | Virtio-net driver (real Ethernet frames) | Planned |
-| 29 | ARP + ICMP (ping) over virtio-net | Planned |
-| 30 | TCP/IP stack (connect, listen, accept) | Planned |
+| 26 | Virtio device discovery + virtqueue types | Done |
+| 27 | Block device abstraction layer | Done |
+| 28 | FAT16-like filesystem (MF16) with cluster chains | Done |
+| 29 | ARP table + ICMP ping simulation | Done |
+| 30 | TCP state machine types (groundwork) | Done |
 
 ### User Space (Phases 31-35)
 
