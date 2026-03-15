@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env, module};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env, module, slab, ksyms, paging};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -166,6 +166,8 @@ fn dispatch(cmd: &str) {
             println!("  uptime     - time since boot");
             println!("  heap       - heap stats");
             println!("  free       - memory summary");
+            println!("  slabinfo   - slab allocator caches");
+            println!("  bt         - stack backtrace");
             println!("  memmap     - physical memory map");
             println!("  drivers    - list kernel drivers");
             println!("  lsmod      - list kernel modules");
@@ -326,6 +328,24 @@ fn dispatch(cmd: &str) {
         }
 
         // --- System ---
+        "slabinfo" => {
+            let caches = slab::stats();
+            if caches.is_empty() {
+                println!("No slab caches.");
+            } else {
+                println!("  \x1b[1mNAME         SIZE  CAPACITY  IN_USE  ALLOC  FREE\x1b[0m");
+                for c in caches {
+                    println!("  {:<12} {:>4}  {:>8}  {:>6}  {:>5}  {:>4}",
+                        c.name, c.obj_size, c.capacity, c.in_use, c.allocated, c.freed);
+                }
+            }
+            let ps = paging::stats();
+            println!("  Demand paging: {} faulted-in / {} preallocated",
+                ps.pages_faulted_in, ps.pages_preallocated);
+        }
+        "bt" => {
+            print!("{}", ksyms::format_backtrace());
+        }
         "memmap" => {
             let stats = memory::stats();
             println!("Physical memory: {} KiB usable, {} frames allocated, {} regions",

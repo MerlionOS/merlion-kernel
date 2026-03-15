@@ -54,6 +54,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] Modules registered");
     serial_println!("[ok] Modules registered");
 
+    ksyms::init();
+    slab::init();
+    println!("[ok] Slab caches ready");
+    serial_println!("[ok] Kernel symbols + slab allocator initialized");
+
     env::init();
 
     smp::init();

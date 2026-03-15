@@ -104,11 +104,11 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 22)
+## Current Status (Phase 25)
 
-- 31 source modules, ~5000 lines of Rust
-- Loadable kernel modules with `lsmod`/`modprobe`/`rmmod`
-- Demand paging: lazy page allocation via page fault handler
+- 33 source modules, ~5500 lines of Rust
+- Kernel Evolution milestone complete (Phases 21-25)
+- Loadable modules, demand paging, slab allocator, symbol table
 - 50+ shell commands
 
 ## Roadmap
@@ -149,9 +149,9 @@ src/
 |-------|-------|--------|
 | 21 | Loadable kernel modules (dynamic driver registration) | Done |
 | 22 | Demand paging + page fault-driven lazy allocation | Done |
-| 23 | Copy-on-write fork (process creation) | Planned |
-| 24 | Kernel symbol table + stack trace on panic | Planned |
-| 25 | Slab allocator for fixed-size kernel objects | Planned |
+| 23 | Copy-on-write fork (process creation) | Deferred |
+| 24 | Kernel symbol table + stack trace on panic | Done |
+| 25 | Slab allocator for fixed-size kernel objects | Done |
 
 ### Real Hardware (Phases 26-30)
 
