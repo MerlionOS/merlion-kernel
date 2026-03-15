@@ -9,6 +9,8 @@ use crate::{serial_println, klog_println};
 
 const MAX_TASKS: usize = 8;
 const TASK_STACK_SIZE: usize = 4096 * 4; // 16 KiB per task
+const GUARD_SIZE: usize = 64;            // guard canary at stack bottom
+const GUARD_CANARY: u8 = 0xDE;           // canary byte pattern
 
 /// Index of the currently running task.
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
@@ -60,8 +62,12 @@ pub fn init() {
 pub fn spawn(name: &'static str, entry: fn()) -> Option<usize> {
     let pid = NEXT_PID.fetch_add(1, Ordering::Relaxed);
 
-    // Allocate a stack for the task
+    // Allocate a stack with a guard canary at the bottom
     let mut stack = Box::new([0u8; TASK_STACK_SIZE]);
+    // Write guard canary (0xDEAD pattern) at the bottom 64 bytes
+    for i in 0..GUARD_SIZE {
+        stack[i] = GUARD_CANARY;
+    }
     let stack_top = stack.as_mut_ptr() as u64 + TASK_STACK_SIZE as u64;
 
     // Set up the initial stack so context_switch will "return" into task_wrapper.
@@ -209,6 +215,23 @@ pub fn current_pid() -> usize {
         TaskSlot::Occupied { pid, .. } => *pid,
         _ => 0,
     }
+}
+
+/// Check stack guard canaries for all tasks. Returns names of corrupted tasks.
+pub fn check_stack_guards() -> alloc::vec::Vec<(usize, &'static str)> {
+    let tasks = TASKS.lock();
+    let mut corrupted = alloc::vec::Vec::new();
+    for slot in tasks.iter() {
+        if let TaskSlot::Occupied { pid, name, state, _stack: Some(ref stack), .. } = slot {
+            if *state == TaskState::Finished { continue; }
+            // Check if guard canary is intact
+            let guard_ok = stack[..GUARD_SIZE].iter().all(|&b| b == GUARD_CANARY);
+            if !guard_ok {
+                corrupted.push((*pid, *name));
+            }
+        }
+    }
+    corrupted
 }
 
 /// Called by the timer to attempt preemptive scheduling.

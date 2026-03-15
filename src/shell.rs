@@ -188,6 +188,8 @@ pub fn dispatch(cmd: &str) {
             println!("  free       - memory summary");
             println!("  slabinfo   - slab allocator caches");
             println!("  bt         - stack backtrace");
+            println!("  stackcheck - verify task stack guards");
+            println!("  heapcheck  - verify heap integrity");
             println!("  lockdemo   - spinlock vs ticket lock");
             println!("AI commands:");
             println!("  ai <text>  - ask the AI (proxy or keyword)");
@@ -436,6 +438,24 @@ pub fn dispatch(cmd: &str) {
                 println!("  {:<13} {:<8} {:>8}  {:>5}  {:>3}",
                     s.name, s.kind, s.acquires, s.total_spins, s.avg_spins);
             }
+        }
+        "stackcheck" => {
+            let corrupted = task::check_stack_guards();
+            if corrupted.is_empty() {
+                println!("\x1b[32mAll task stack guards intact.\x1b[0m");
+            } else {
+                for (pid, name) in corrupted {
+                    println!("\x1b[31mWARNING: stack guard corrupted for '{}' (pid {})\x1b[0m", name, pid);
+                }
+            }
+        }
+        "heapcheck" => {
+            let h = allocator::check_integrity();
+            println!("Heap integrity:");
+            println!("  Bounds OK:      {}", if h.bounds_ok { "\x1b[32myes\x1b[0m" } else { "\x1b[31mNO\x1b[0m" });
+            println!("  Not exhausted:  {}", if h.not_exhausted { "\x1b[32myes\x1b[0m" } else { "\x1b[31mNO\x1b[0m" });
+            println!("  Reasonable use: {}", if h.reasonable_usage { "\x1b[32myes\x1b[0m" } else { "\x1b[31mNO\x1b[0m" });
+            println!("  Used/Free:      {} / {} bytes", h.used, h.free);
         }
         "bt" => {
             print!("{}", ksyms::format_backtrace());

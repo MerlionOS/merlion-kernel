@@ -21,6 +21,10 @@ pub enum NodeType {
     ProcUptime,
     ProcMeminfo,
     ProcTasks,
+    ProcVersion,
+    ProcCpuinfo,
+    ProcModules,
+    ProcSelf,
 }
 
 struct Inode {
@@ -94,7 +98,35 @@ impl Filesystem {
             parent: 4,
             data: Vec::new(),
         });
-        // 8: /tmp
+        // 8: /proc/version
+        fs.inodes.push(Inode {
+            name: "version".to_owned(),
+            node_type: NodeType::ProcVersion,
+            parent: 4,
+            data: Vec::new(),
+        });
+        // 9: /proc/cpuinfo
+        fs.inodes.push(Inode {
+            name: "cpuinfo".to_owned(),
+            node_type: NodeType::ProcCpuinfo,
+            parent: 4,
+            data: Vec::new(),
+        });
+        // 10: /proc/modules
+        fs.inodes.push(Inode {
+            name: "modules".to_owned(),
+            node_type: NodeType::ProcModules,
+            parent: 4,
+            data: Vec::new(),
+        });
+        // 11: /proc/self
+        fs.inodes.push(Inode {
+            name: "self".to_owned(),
+            node_type: NodeType::ProcSelf,
+            parent: 4,
+            data: Vec::new(),
+        });
+        // 12: /tmp
         fs.inodes.push(Inode {
             name: "tmp".to_owned(),
             node_type: NodeType::Directory,
@@ -177,6 +209,33 @@ impl Filesystem {
                     out.push_str(&alloc::format!("{:3}  {}  {}\n", t.pid, st, t.name));
                 }
                 out
+            }
+            NodeType::ProcVersion => {
+                alloc::format!("MerlionOS v2.0.0 (x86_64)\nBorn for AI. Built by AI.\n")
+            }
+            NodeType::ProcCpuinfo => {
+                let features = crate::smp::detect_features();
+                alloc::format!(
+                    "CPU:    {}\nCores:  {}\nAPIC:   {}\nSSE:    {}\n",
+                    features.brand, features.logical_cores,
+                    if features.has_apic { "yes" } else { "no" },
+                    if features.has_sse { "yes" } else { "no" },
+                )
+            }
+            NodeType::ProcModules => {
+                let mut out = String::new();
+                for m in crate::module::list() {
+                    let state = match m.state {
+                        crate::module::ModuleState::Loaded => "loaded",
+                        crate::module::ModuleState::Unloaded => "unloaded",
+                    };
+                    out.push_str(&alloc::format!("{} {} {}\n", m.name, m.version, state));
+                }
+                out
+            }
+            NodeType::ProcSelf => {
+                let pid = crate::task::current_pid();
+                alloc::format!("pid: {}\n", pid)
             }
             NodeType::Directory => "(directory)\n".to_owned(),
         }

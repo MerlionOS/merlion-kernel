@@ -62,3 +62,30 @@ pub fn stats() -> HeapStats {
     let free = ALLOCATOR.lock().free();
     HeapStats { used, free, total: HEAP_SIZE }
 }
+
+/// Check heap integrity. Returns true if the heap bounds look sane.
+pub fn check_integrity() -> HeapIntegrity {
+    let alloc = ALLOCATOR.lock();
+    let used = alloc.used();
+    let free = alloc.free();
+
+    let bounds_ok = used + free <= HEAP_SIZE + 64; // small alignment slack
+    let not_exhausted = free > 0;
+    let reasonable_usage = used <= HEAP_SIZE;
+
+    HeapIntegrity {
+        bounds_ok,
+        not_exhausted,
+        reasonable_usage,
+        used,
+        free,
+    }
+}
+
+pub struct HeapIntegrity {
+    pub bounds_ok: bool,
+    pub not_exhausted: bool,
+    pub reasonable_usage: bool,
+    pub used: usize,
+    pub free: usize,
+}
