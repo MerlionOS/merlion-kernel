@@ -64,7 +64,7 @@ def respond_ollama(prompt: str, model: str = "llama3.2") -> str:
 
 
 def respond_claude(prompt: str) -> str:
-    """Forward to Claude API."""
+    """Forward to Claude API (requires ANTHROPIC_API_KEY)."""
     try:
         import anthropic
         client = anthropic.Anthropic()
@@ -76,20 +76,53 @@ def respond_claude(prompt: str) -> str:
         )
         return msg.content[0].text.strip()[:200]
     except Exception as e:
-        return f"Claude error: {e}"
+        return f"Claude API error: {e}"
+
+
+def respond_claude_code(prompt: str) -> str:
+    """Forward to Claude via the `claude` CLI (uses Max/Pro subscription).
+    No API key needed — uses your existing Claude Code authentication."""
+    import subprocess
+    try:
+        system_prompt = (
+            "You are MerlionOS AI assistant embedded in a hobby OS kernel. "
+            "Be concise (1-2 sentences max). "
+            "Respond in the same language as the user. "
+            "Do not use markdown formatting."
+        )
+        result = subprocess.run(
+            ["claude", "-p", f"{system_prompt}\n\nUser: {prompt}"],
+            capture_output=True, text=True, timeout=30,
+        )
+        answer = result.stdout.strip()
+        if not answer:
+            answer = result.stderr.strip() or "No response from Claude Code"
+        # Truncate for serial transport and strip any markdown
+        answer = answer.replace("\n", " ").strip()[:200]
+        return answer
+    except FileNotFoundError:
+        return "Error: 'claude' CLI not found. Install Claude Code first."
+    except subprocess.TimeoutExpired:
+        return "Claude Code timeout (30s)"
+    except Exception as e:
+        return f"Claude Code error: {e}"
 
 
 def main():
     parser = argparse.ArgumentParser(description="MerlionOS LLM Proxy")
     parser.add_argument("port", help="Serial port path (e.g., /dev/ttys005)")
     parser.add_argument("--baud", type=int, default=38400, help="Baud rate")
-    parser.add_argument("--claude", action="store_true", help="Use Claude API")
+    parser.add_argument("--claude", action="store_true", help="Use Claude API (needs ANTHROPIC_API_KEY)")
+    parser.add_argument("--claude-code", action="store_true", help="Use Claude Code CLI (Max/Pro subscription)")
     parser.add_argument("--ollama", action="store_true", help="Use local Ollama")
     parser.add_argument("--model", default="llama3.2", help="Ollama model name")
     args = parser.parse_args()
 
-    if args.claude:
-        backend = "Claude API"
+    if args.claude_code:
+        backend = "Claude Code CLI (Max subscription)"
+        respond = respond_claude_code
+    elif args.claude:
+        backend = "Claude API (ANTHROPIC_API_KEY)"
         respond = respond_claude
     elif args.ollama:
         backend = f"Ollama ({args.model})"

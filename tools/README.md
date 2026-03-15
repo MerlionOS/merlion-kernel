@@ -21,14 +21,17 @@ QEMU will print: `char device redirected to /dev/ttysXXX`
 
 **Terminal 2** — Start the proxy with that path:
 ```sh
-# With Claude API:
+# Recommended: Use your Claude Max/Pro subscription (no API key needed):
+python3 tools/llm-proxy.py /dev/ttysXXX --claude-code
+
+# With Claude API (needs separate API key):
 export ANTHROPIC_API_KEY=sk-ant-...
 python3 tools/llm-proxy.py /dev/ttysXXX --claude
 
-# With local Ollama:
+# With local Ollama (free, offline):
 python3 tools/llm-proxy.py /dev/ttysXXX --ollama
 
-# Without LLM (echo mode):
+# Without LLM (echo mode for testing):
 python3 tools/llm-proxy.py /dev/ttysXXX
 ```
 
@@ -52,6 +55,7 @@ Proxy → Kernel:  {"a":"<answer>"}\n
 
 | Flag | Backend | Requirements |
 |------|---------|-------------|
-| (none) | Built-in echo | None |
-| `--ollama` | Local Ollama | `ollama serve` running |
+| `--claude-code` | **Claude Code CLI** | Claude Max/Pro subscription |
 | `--claude` | Claude API | `ANTHROPIC_API_KEY` env var |
+| `--ollama` | Local Ollama | `ollama serve` running |
+| (none) | Built-in echo | None |
