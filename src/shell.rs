@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -178,6 +178,11 @@ pub fn dispatch(cmd: &str) {
             println!("  rm <path>  - remove file");
             println!("  wc <path>  - count lines/bytes");
             println!("  edit <path> - text editor (Ctrl+S save, Ctrl+Q quit)");
+            println!("  grep <pat> <path> - search in file");
+            println!("  head <n> <path> - first N lines");
+            println!("  tail <n> <path> - last N lines");
+            println!("  sort <path> - sort lines");
+            println!("  hexdump <path> - hex + ASCII dump");
             println!("  readelf    - parse kernel ELF header");
             println!("  mkelf <p>  - build ELF from user program");
             println!("  loadelf <s> <sz> - load ELF from disk sector");
@@ -400,6 +405,68 @@ pub fn dispatch(cmd: &str) {
         }
 
         // --- System ---
+        cmd if cmd.starts_with("grep ") => {
+            let rest = cmd[5..].trim();
+            if let Some((pattern, path)) = rest.split_once(' ') {
+                match vfs::cat(path.trim()) {
+                    Ok(content) => {
+                        let matches = coreutils::grep_n(pattern, &content);
+                        if matches.is_empty() {
+                            println!("(no matches)");
+                        } else {
+                            for line in matches { println!("{}", line); }
+                        }
+                    }
+                    Err(e) => println!("grep: {}: {}", path, e),
+                }
+            } else {
+                println!("Usage: grep <pattern> <path>");
+            }
+        }
+        cmd if cmd.starts_with("head ") => {
+            let rest = cmd[5..].trim();
+            if let Some((n_str, path)) = rest.split_once(' ') {
+                let n = n_str.parse::<usize>().unwrap_or(10);
+                match vfs::cat(path.trim()) {
+                    Ok(content) => {
+                        for line in coreutils::head(&content, n) { println!("{}", line); }
+                    }
+                    Err(e) => println!("head: {}", e),
+                }
+            } else {
+                println!("Usage: head <n> <path>");
+            }
+        }
+        cmd if cmd.starts_with("tail ") => {
+            let rest = cmd[5..].trim();
+            if let Some((n_str, path)) = rest.split_once(' ') {
+                let n = n_str.parse::<usize>().unwrap_or(10);
+                match vfs::cat(path.trim()) {
+                    Ok(content) => {
+                        for line in coreutils::tail(&content, n) { println!("{}", line); }
+                    }
+                    Err(e) => println!("tail: {}", e),
+                }
+            } else {
+                println!("Usage: tail <n> <path>");
+            }
+        }
+        cmd if cmd.starts_with("sort ") => {
+            let path = cmd[5..].trim();
+            match vfs::cat(path) {
+                Ok(content) => {
+                    for line in coreutils::sort(&content) { println!("{}", line); }
+                }
+                Err(e) => println!("sort: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("hexdump ") => {
+            let path = cmd[8..].trim();
+            match vfs::cat(path) {
+                Ok(content) => print!("{}", coreutils::hexdump(content.as_bytes(), 256)),
+                Err(e) => println!("hexdump: {}", e),
+            }
+        }
         cmd if cmd.starts_with("edit ") => {
             let path = cmd[5..].trim();
             editor::open(path);
