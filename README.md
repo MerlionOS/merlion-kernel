@@ -104,11 +104,32 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 10)
+## Current Status (Phase 11)
 
-- ACPI shutdown and keyboard controller reboot
-- VGA ANSI color escape sequences (\x1b[31m...\x1b[0m)
-- Physical memory map display with color-coded regions
-- Kernel driver registration framework
-- Memory statistics (usable RAM, allocated frames)
-- 18 source files, ~2400 lines of Rust
+- 20 source modules, ~2900 lines of Rust
+- ASCII art Merlion boot screen with color
+- CMOS RTC real-time clock with `date` command
+- 15 built-in kernel self-tests (`test` command)
+- ACPI shutdown/reboot, VGA ANSI colors, memory map display
+- Fullscreen QEMU mode (`make run-fullscreen`)
+
+## Roadmap
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1  | Boot in QEMU, VGA hello, panic handler | Done |
+| 2  | Serial logging, GDT/IDT, PIT timer, exceptions | Done |
+| 3  | Keyboard input, heap allocator, frame allocator | Done |
+| 4  | VGA console + scrolling, shell, `println!` | Done |
+| 5  | Uptime, kernel log, page fault handler, user-mode groundwork | Done |
+| 6  | Preemptive multitasking, context switching, scheduler | Done |
+| 7  | Per-process page tables, syscall ABI, user programs | Done |
+| 8  | IPC channels, concurrent processes, expanded syscalls | Done |
+| 9  | Virtual filesystem (/dev, /proc, /tmp), task kill | Done |
+| 10 | ACPI power management, ANSI colors, driver framework | Done |
+| 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
+| 12 | Framebuffer graphics, basic drawing primitives | Planned |
+| 13 | Virtio-blk storage driver, simple filesystem on disk | Planned |
+| 14 | Virtio-net networking, ARP, UDP | Planned |
+| 15 | SMP/multicore (AP startup, per-CPU scheduling) | Planned |
+| 16 | Separate user-space crate, ELF loader, libc | Planned |
