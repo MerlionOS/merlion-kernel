@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -278,6 +278,7 @@ pub fn dispatch(cmd: &str) {
             println!("  test       - run kernel self-tests");
             println!("  top        - live system monitor");
             println!("  calc <exp> - calculator (+ - * / %)");
+            println!("  bench      - system performance benchmark");
             println!("  about      - about MerlionOS");
             println!("  version    - version and build info");
             println!("  demo       - run full system demo");
@@ -1344,6 +1345,7 @@ pub fn dispatch(cmd: &str) {
             println!("Sem. VFS:   {} tagged files", semfs::list_all().len());
         }
 
+        "bench" => bench::run_all(),
         cmd if cmd.starts_with("calc ") => {
             let expr = cmd[5..].trim();
             match calc::eval(expr) {

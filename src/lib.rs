@@ -13,6 +13,7 @@ pub mod ai_shell;
 pub mod ai_syscall;
 pub mod allocator;
 pub mod apic_timer;
+pub mod bench;
 pub mod blkdev;
 pub mod chat;
 pub mod boot_info_ext;
