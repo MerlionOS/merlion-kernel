@@ -106,12 +106,14 @@ src/
 
 ## Current Status (Phase 20)
 
-- 28 source modules, ~5100 lines of Rust
-- `neofetch`, `free`, `sleep`, `uname`, `whoami`, `hostname`
+- 28 source modules, ~4500 lines of Rust
 - 45+ shell commands, environment variables, aliases
-- Networking, PCI, RAM disk, framebuffer, and more
+- Preemptive multitasking, user-mode, VFS, IPC, networking
+- See [docs/architecture.md](docs/architecture.md) for design details
 
 ## Roadmap
+
+### Foundation (Phases 1-10)
 
 | Phase | Focus | Status |
 |-------|-------|--------|
@@ -125,6 +127,11 @@ src/
 | 8  | IPC channels, concurrent processes, expanded syscalls | Done |
 | 9  | Virtual filesystem (/dev, /proc, /tmp), task kill | Done |
 | 10 | ACPI power management, ANSI colors, driver framework | Done |
+
+### Features (Phases 11-20)
+
+| Phase | Focus | Status |
+|-------|-------|--------|
 | 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
 | 12 | Framebuffer graphics, basic drawing primitives | Done |
 | 13 | PCI bus scan, RAM disk, block filesystem | Done |
@@ -135,3 +142,43 @@ src/
 | 18 | Environment variables, aliases, $VAR expansion | Done |
 | 19 | neofetch, uname, whoami, hostname | Done |
 | 20 | free, sleep, polished shell experience | Done |
+
+### Kernel Evolution (Phases 21-25)
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 21 | Loadable kernel modules (dynamic driver registration) | Planned |
+| 22 | Demand paging + page fault-driven lazy allocation | Planned |
+| 23 | Copy-on-write fork (process creation) | Planned |
+| 24 | Kernel symbol table + stack trace on panic | Planned |
+| 25 | Slab allocator for fixed-size kernel objects | Planned |
+
+### Real Hardware (Phases 26-30)
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 26 | Virtio-blk driver (real block I/O through QEMU) | Planned |
+| 27 | FAT16 filesystem on virtio-blk disk | Planned |
+| 28 | Virtio-net driver (real Ethernet frames) | Planned |
+| 29 | ARP + ICMP (ping) over virtio-net | Planned |
+| 30 | TCP/IP stack (connect, listen, accept) | Planned |
+
+### User Space (Phases 31-35)
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 31 | ELF binary loader | Planned |
+| 32 | Separate user-space crate (merlion-user) | Planned |
+| 33 | POSIX-like syscalls (open, read, write, close, dup) | Planned |
+| 34 | User-space libc (memory allocator, printf, string) | Planned |
+| 35 | Init process + login shell | Planned |
+
+### SMP & Advanced (Phases 36-40)
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 36 | AP boot (start secondary CPUs via SIPI) | Planned |
+| 37 | Per-CPU run queues + load balancing | Planned |
+| 38 | Spinlock → ticket lock → MCS lock progression | Planned |
+| 39 | APIC timer (replace PIT, per-CPU scheduling) | Planned |
+| 40 | IOAPIC + MSI interrupt routing | Planned |
