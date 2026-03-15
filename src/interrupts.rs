@@ -122,6 +122,8 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
             crate::editor::handle_input(event);
         } else if crate::top::is_running() {
             crate::top::handle_input(event);
+        } else if crate::watch::is_running() {
+            crate::watch::handle_input(event);
         } else if crate::forth::is_running() {
             crate::forth::handle_input(event);
         } else if crate::chat::is_chatting() {

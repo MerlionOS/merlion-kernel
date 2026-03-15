@@ -86,4 +86,5 @@ pub mod virtio;
 pub mod virtio_blk;
 pub mod virtio_net;
 pub mod vga;
+pub mod watch;
 pub mod xhci;

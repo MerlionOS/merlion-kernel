@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -284,6 +284,7 @@ pub fn dispatch(cmd: &str) {
             println!("  demo       - run full system demo");
             println!("  snake      - play Snake game!");
             println!("  forth      - Forth programming language");
+            println!("  watch <n> <cmd> - repeat command every N sec");
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
@@ -1398,6 +1399,17 @@ pub fn dispatch(cmd: &str) {
             print!("{}", crate::version::build_info());
         }
         "demo" => demo::run(),
+        cmd if cmd.starts_with("watch ") => {
+            let rest = cmd[6..].trim();
+            if let Some((n_str, command)) = rest.split_once(' ') {
+                let interval = n_str.parse::<u64>().unwrap_or(2);
+                watch::run(interval, command.trim());
+                crate::vga::print_banner();
+                println!("Watch stopped.");
+            } else {
+                println!("Usage: watch <seconds> <command>");
+            }
+        }
         "forth" => {
             forth::enter();
             while forth::is_running() { x86_64::instructions::hlt(); }
