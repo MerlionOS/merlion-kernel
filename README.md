@@ -104,14 +104,13 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 11)
+## Current Status (Phase 12)
 
-- 20 source modules, ~2900 lines of Rust
-- ASCII art Merlion boot screen with color
-- CMOS RTC real-time clock with `date` command
-- 15 built-in kernel self-tests (`test` command)
-- ACPI shutdown/reboot, VGA ANSI colors, memory map display
-- Fullscreen QEMU mode (`make run-fullscreen`)
+- 21 source modules, ~3200 lines of Rust
+- Software framebuffer: 160x50 pixel graphics via half-block characters
+- Drawing primitives: pixel, line, rect, circle (filled and outline)
+- Singapore flag demo with `gfx` command
+- Bresenham line algorithm, midpoint circle algorithm
 
 ## Roadmap
 
@@ -128,7 +127,7 @@ src/
 | 9  | Virtual filesystem (/dev, /proc, /tmp), task kill | Done |
 | 10 | ACPI power management, ANSI colors, driver framework | Done |
 | 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
-| 12 | Framebuffer graphics, basic drawing primitives | Planned |
+| 12 | Framebuffer graphics, basic drawing primitives | Done |
 | 13 | Virtio-blk storage driver, simple filesystem on disk | Planned |
 | 14 | Virtio-net networking, ARP, UDP | Planned |
 | 15 | SMP/multicore (AP startup, per-CPU scheduling) | Planned |

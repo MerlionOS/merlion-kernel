@@ -70,6 +70,7 @@ pub fn list() -> Vec<(String, &'static str, &'static str)> {
 pub fn init() {
     register("uart0", DriverKind::Serial);
     register("vga-text", DriverKind::Display);
+    register("framebuf", DriverKind::Display);
     register("pit", DriverKind::Timer);
     register("ps2-kbd", DriverKind::Keyboard);
     register("vfs", DriverKind::Filesystem);

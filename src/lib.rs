@@ -4,6 +4,7 @@
 extern crate alloc;
 
 pub mod acpi;
+pub mod framebuf;
 pub mod allocator;
 pub mod driver;
 pub mod gdt;
