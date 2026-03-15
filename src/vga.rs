@@ -1,47 +1,195 @@
-/// Minimal VGA text mode (mode 3) writer.
-/// Writes directly to the VGA buffer at 0xB8000.
-/// 80 columns x 25 rows, each cell is 2 bytes: [ascii, attribute].
+/// VGA text mode (mode 3) console with scrolling and cursor.
+/// 80 columns x 25 rows. Each cell is 2 bytes: [ascii, attribute].
 
-const VGA_BUFFER: *mut u8 = 0xB8000 as *mut u8;
-const VGA_WIDTH: usize = 80;
-const VGA_HEIGHT: usize = 25;
+use core::fmt;
+use spin::Mutex;
 
-/// VGA color attribute: light gray on black
-const DEFAULT_ATTR: u8 = 0x07;
-/// VGA color attribute: light green on black (for the banner)
-const BANNER_ATTR: u8 = 0x0A;
+const VGA_BUFFER: usize = 0xB8000;
+const WIDTH: usize = 80;
+const HEIGHT: usize = 25;
 
-/// Clear the entire screen with spaces.
-pub fn clear_screen() {
-    for i in 0..(VGA_WIDTH * VGA_HEIGHT) {
+/// VGA color attributes.
+#[allow(dead_code)]
+#[repr(u8)]
+pub enum Color {
+    Black = 0x0,
+    Blue = 0x1,
+    Green = 0x2,
+    Cyan = 0x3,
+    Red = 0x4,
+    Magenta = 0x5,
+    Brown = 0x6,
+    LightGray = 0x7,
+    DarkGray = 0x8,
+    LightBlue = 0x9,
+    LightGreen = 0xA,
+    LightCyan = 0xB,
+    LightRed = 0xC,
+    Pink = 0xD,
+    Yellow = 0xE,
+    White = 0xF,
+}
+
+pub const fn color_attr(fg: Color, bg: Color) -> u8 {
+    (bg as u8) << 4 | (fg as u8)
+}
+
+pub static WRITER: Mutex<Writer> = Mutex::new(Writer::new());
+
+pub struct Writer {
+    col: usize,
+    row: usize,
+    attr: u8,
+}
+
+impl Writer {
+    const fn new() -> Self {
+        Self {
+            col: 0,
+            row: 0,
+            attr: color_attr(Color::LightGray, Color::Black),
+        }
+    }
+
+    fn buffer(&self) -> *mut u8 {
+        VGA_BUFFER as *mut u8
+    }
+
+    pub fn set_attr(&mut self, attr: u8) {
+        self.attr = attr;
+    }
+
+    pub fn clear(&mut self) {
+        for i in 0..(WIDTH * HEIGHT) {
+            unsafe {
+                self.buffer().add(i * 2).write_volatile(b' ');
+                self.buffer().add(i * 2 + 1).write_volatile(self.attr);
+            }
+        }
+        self.row = 0;
+        self.col = 0;
+        self.update_cursor();
+    }
+
+    pub fn write_byte(&mut self, byte: u8) {
+        match byte {
+            b'\n' => self.newline(),
+            b'\x08' => {
+                // Backspace
+                if self.col > 0 {
+                    self.col -= 1;
+                    self.put_char(self.row, self.col, b' ');
+                }
+            }
+            byte => {
+                if self.col >= WIDTH {
+                    self.newline();
+                }
+                self.put_char(self.row, self.col, byte);
+                self.col += 1;
+            }
+        }
+        self.update_cursor();
+    }
+
+    fn put_char(&self, row: usize, col: usize, byte: u8) {
+        let offset = (row * WIDTH + col) * 2;
         unsafe {
-            VGA_BUFFER.add(i * 2).write_volatile(b' ');
-            VGA_BUFFER.add(i * 2 + 1).write_volatile(DEFAULT_ATTR);
+            self.buffer().add(offset).write_volatile(byte);
+            self.buffer().add(offset + 1).write_volatile(self.attr);
+        }
+    }
+
+    fn newline(&mut self) {
+        if self.row < HEIGHT - 1 {
+            self.row += 1;
+        } else {
+            self.scroll();
+        }
+        self.col = 0;
+    }
+
+    fn scroll(&mut self) {
+        // Move rows 1..HEIGHT up by one
+        for row in 1..HEIGHT {
+            for col in 0..WIDTH {
+                let src = (row * WIDTH + col) * 2;
+                let dst = ((row - 1) * WIDTH + col) * 2;
+                unsafe {
+                    let ch = self.buffer().add(src).read_volatile();
+                    let at = self.buffer().add(src + 1).read_volatile();
+                    self.buffer().add(dst).write_volatile(ch);
+                    self.buffer().add(dst + 1).write_volatile(at);
+                }
+            }
+        }
+        // Clear the last row
+        for col in 0..WIDTH {
+            self.put_char(HEIGHT - 1, col, b' ');
+        }
+    }
+
+    fn update_cursor(&self) {
+        let pos = (self.row * WIDTH + self.col) as u16;
+        unsafe {
+            use x86_64::instructions::port::Port;
+            let mut cmd = Port::<u8>::new(0x3D4);
+            let mut data = Port::<u8>::new(0x3D5);
+            cmd.write(0x0F);
+            data.write((pos & 0xFF) as u8);
+            cmd.write(0x0E);
+            data.write((pos >> 8) as u8);
         }
     }
 }
 
-/// Write a string at a given row and column with the specified color attribute.
-fn write_at(row: usize, col: usize, s: &str, attr: u8) {
-    let mut offset = (row * VGA_WIDTH + col) * 2;
-    for byte in s.bytes() {
-        if offset >= VGA_WIDTH * VGA_HEIGHT * 2 {
-            break;
+impl fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for byte in s.bytes() {
+            self.write_byte(byte);
         }
-        unsafe {
-            VGA_BUFFER.add(offset).write_volatile(byte);
-            VGA_BUFFER.add(offset + 1).write_volatile(attr);
-        }
-        offset += 2;
+        Ok(())
     }
 }
+
+// --- Public convenience functions ---
 
 /// Print the MerlionOS boot banner.
 pub fn print_banner() {
-    clear_screen();
-    write_at(0, 0, "========================================", BANNER_ATTR);
-    write_at(1, 0, "  MerlionOS v0.1.0", BANNER_ATTR);
-    write_at(2, 0, "  Hello from MerlionOS!", BANNER_ATTR);
-    write_at(3, 0, "========================================", BANNER_ATTR);
-    write_at(5, 0, "Kernel reached entry point. System halted.", DEFAULT_ATTR);
+    let mut w = WRITER.lock();
+    let banner_attr = color_attr(Color::LightGreen, Color::Black);
+    let saved = w.attr;
+
+    w.clear();
+    w.set_attr(banner_attr);
+    use fmt::Write;
+    let _ = w.write_str("========================================\n");
+    let _ = w.write_str("  MerlionOS v0.1.0\n");
+    let _ = w.write_str("  Hello from MerlionOS!\n");
+    let _ = w.write_str("========================================\n");
+    w.set_attr(saved);
+    let _ = w.write_str("\n");
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {
+        $crate::vga::_print(format_args!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! println {
+    ()            => { $crate::print!("\n") };
+    ($($arg:tt)*) => { $crate::print!("{}\n", format_args!($($arg)*)) };
+}
+
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    use fmt::Write;
+    use x86_64::instructions::interrupts;
+
+    interrupts::without_interrupts(|| {
+        WRITER.lock().write_fmt(args).unwrap();
+    });
 }

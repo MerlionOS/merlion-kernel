@@ -77,11 +77,10 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
     use x86_64::instructions::port::Port;
     use crate::keyboard;
 
-    // Read the scancode from the PS/2 data port
     let scancode: u8 = unsafe { Port::new(0x60).read() };
 
     if let Some(ch) = keyboard::scancode_to_ascii(scancode) {
-        serial_println!("key: '{}'", ch);
+        crate::shell::handle_key(ch);
     }
 
     unsafe {

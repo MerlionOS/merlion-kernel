@@ -28,10 +28,12 @@ unsafe fn active_level_4_table(physical_memory_offset: VirtAddr) -> &'static mut
     unsafe { &mut *page_table_ptr }
 }
 
-/// A frame allocator that returns usable frames from the bootloader's memory map.
+/// A frame allocator that walks through usable memory regions linearly.
+/// Each allocate_frame() call is O(1).
 pub struct BootInfoFrameAllocator {
     memory_map: &'static MemoryMap,
-    next: usize,
+    region_index: usize,
+    offset_in_region: u64,
 }
 
 impl BootInfoFrameAllocator {
@@ -41,24 +43,48 @@ impl BootInfoFrameAllocator {
     /// The caller must guarantee that the memory map is valid and that
     /// all `Usable` regions are actually unused.
     pub unsafe fn init(memory_map: &'static MemoryMap) -> Self {
-        Self { memory_map, next: 0 }
+        let mut alloc = Self {
+            memory_map,
+            region_index: 0,
+            offset_in_region: 0,
+        };
+        // Advance to the first usable region
+        alloc.skip_to_usable();
+        alloc
     }
 
-    /// Iterator over all usable physical frames.
-    fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> + '_ {
-        self.memory_map
-            .iter()
-            .filter(|r| r.region_type == MemoryRegionType::Usable)
-            .map(|r| r.range.start_addr()..r.range.end_addr())
-            .flat_map(|r| r.step_by(4096))
-            .map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
+    /// Advance region_index to the next Usable region.
+    fn skip_to_usable(&mut self) {
+        while self.region_index < self.memory_map.len() {
+            if self.memory_map[self.region_index].region_type == MemoryRegionType::Usable {
+                return;
+            }
+            self.region_index += 1;
+        }
     }
 }
 
 unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
-        let frame = self.usable_frames().nth(self.next);
-        self.next += 1;
-        frame
+        loop {
+            if self.region_index >= self.memory_map.len() {
+                return None;
+            }
+
+            let region = &self.memory_map[self.region_index];
+            let region_start = region.range.start_addr();
+            let region_size = region.range.end_addr() - region_start;
+            let addr = region_start + self.offset_in_region;
+
+            if self.offset_in_region < region_size {
+                self.offset_in_region += 4096;
+                return Some(PhysFrame::containing_address(PhysAddr::new(addr)));
+            }
+
+            // Current region exhausted, move to next usable region
+            self.region_index += 1;
+            self.offset_in_region = 0;
+            self.skip_to_usable();
+        }
     }
 }

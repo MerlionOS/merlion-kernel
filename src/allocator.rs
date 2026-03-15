@@ -50,3 +50,15 @@ pub fn init(
 
     Ok(())
 }
+
+pub struct HeapStats {
+    pub used: usize,
+    pub free: usize,
+    pub total: usize,
+}
+
+pub fn stats() -> HeapStats {
+    let used = ALLOCATOR.lock().used();
+    let free = ALLOCATOR.lock().free();
+    HeapStats { used, free, total: HEAP_SIZE }
+}
