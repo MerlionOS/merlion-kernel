@@ -69,8 +69,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     virtio_blk::init();
     virtio_net::init();
     ahci::init();
+    nvme::init();
     xhci::init();
     e1000e::init();
+    netstack::init();
+    usb_hid::init();
     semfs::init();
     ai_proxy::init();
     agent::init();

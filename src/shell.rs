@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, xhci, e1000e, ioapic, http, dhcp};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -294,6 +294,10 @@ pub fn dispatch(cmd: &str) {
             println!("  usbdevs    - list USB devices");
             println!("  ioapicinfo - IOAPIC status");
             println!("  e1000info  - e1000e NIC status");
+            println!("  nvmeinfo   - NVMe SSD status");
+            println!("  gptinfo    - GPT partition table (virtio disk)");
+            println!("  powerinfo  - power management status");
+            println!("  nicsend <msg> - send raw UDP via NIC");
         }
         "info" => {
             let mem = memory::stats();
@@ -1454,6 +1458,55 @@ pub fn dispatch(cmd: &str) {
             } else {
                 println!("e1000e NIC not detected");
             }
+        }
+        "nvmeinfo" => {
+            if nvme::is_detected() {
+                println!("{}", nvme::info());
+            } else {
+                println!("NVMe not detected");
+            }
+        }
+        "gptinfo" => {
+            if !virtio_blk::is_detected() {
+                println!("No virtio disk to read GPT from.");
+            } else {
+                let mut sector = [0u8; 512];
+                match virtio_blk::read_sector(1, &mut sector) {
+                    Ok(()) => {
+                        match gpt::parse_header(&sector) {
+                            Some(hdr) => {
+                                let num_ent = hdr.num_partition_entries;
+                                let ent_size = hdr.partition_entry_size;
+                                println!("GPT found: {} entries", num_ent);
+                                // Read partition entries (sectors 2-33)
+                                let mut entry_data = alloc::vec![0u8; 512 * 32];
+                                for i in 0..32u64 {
+                                    let mut s = [0u8; 512];
+                                    let _ = virtio_blk::read_sector(2 + i, &mut s);
+                                    entry_data[(i as usize) * 512..(i as usize + 1) * 512].copy_from_slice(&s);
+                                }
+                                let parts = gpt::parse_entries(&entry_data, num_ent, ent_size);
+                                if parts.is_empty() {
+                                    println!("No partitions found.");
+                                } else {
+                                    print!("{}", gpt::format_table(&parts));
+                                }
+                            }
+                            None => println!("No GPT header on disk (sector 1)."),
+                        }
+                    }
+                    Err(e) => println!("gptinfo: {}", e),
+                }
+            }
+        }
+        "powerinfo" => {
+            println!("{}", power::info());
+        }
+        cmd if cmd.starts_with("nicsend ") => {
+            let msg = cmd[8..].trim();
+            let dst_ip = [10, 0, 2, 2]; // gateway
+            netstack::send_udp(dst_ip, 12345, 8080, msg.as_bytes());
+            println!("Sent {} bytes via NIC to 10.0.2.2:8080", msg.len());
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {
