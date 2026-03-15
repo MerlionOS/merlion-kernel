@@ -231,6 +231,8 @@ pub fn dispatch(cmd: &str) {
             println!("  netstat    - TCP connections");
             println!("  virtio     - virtio devices");
             println!("  blkdevs    - block devices");
+            println!("  diskread <s> - read sector from virtio disk");
+            println!("  diskwrite <s> <d> - write to virtio disk");
             println!("  fatfmt     - format RAM disk as MF16");
             println!("  fatls      - list MF16 files");
             println!("  fatw <n> <d> - write MF16 file");
@@ -706,6 +708,52 @@ pub fn dispatch(cmd: &str) {
                 for d in devs {
                     println!("  {}", d.summary());
                 }
+            }
+        }
+        cmd if cmd.starts_with("diskread ") => {
+            if let Ok(sector) = cmd[9..].trim().parse::<u64>() {
+                let mut buf = [0u8; 512];
+                match virtio_blk::read_sector(sector, &mut buf) {
+                    Ok(()) => {
+                        println!("Sector {}:", sector);
+                        // Print first 64 bytes as hex
+                        for row in 0..4 {
+                            print!("  {:04x}: ", row * 16);
+                            for col in 0..16 {
+                                print!("{:02x} ", buf[row * 16 + col]);
+                            }
+                            print!(" ");
+                            for col in 0..16 {
+                                let b = buf[row * 16 + col];
+                                if b >= 0x20 && b < 0x7F { print!("{}", b as char); }
+                                else { print!("."); }
+                            }
+                            println!();
+                        }
+                    }
+                    Err(e) => println!("diskread: {}", e),
+                }
+            } else {
+                println!("Usage: diskread <sector_number>");
+            }
+        }
+        cmd if cmd.starts_with("diskwrite ") => {
+            let rest = cmd[10..].trim();
+            if let Some((sector_str, data)) = rest.split_once(' ') {
+                if let Ok(sector) = sector_str.parse::<u64>() {
+                    let mut buf = [0u8; 512];
+                    let bytes = data.as_bytes();
+                    let len = bytes.len().min(512);
+                    buf[..len].copy_from_slice(&bytes[..len]);
+                    match virtio_blk::write_sector(sector, &buf) {
+                        Ok(()) => println!("Written {} bytes to sector {}", len, sector),
+                        Err(e) => println!("diskwrite: {}", e),
+                    }
+                } else {
+                    println!("Usage: diskwrite <sector> <data>");
+                }
+            } else {
+                println!("Usage: diskwrite <sector> <data>");
             }
         }
         "blkdevs" => {
