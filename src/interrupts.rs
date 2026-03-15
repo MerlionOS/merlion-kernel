@@ -118,6 +118,8 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
             crate::snake::handle_input(event);
         } else if crate::editor::is_editing() {
             crate::editor::handle_input(event);
+        } else if crate::top::is_running() {
+            crate::top::handle_input(event);
         } else {
             crate::shell::handle_key_event(event);
         }

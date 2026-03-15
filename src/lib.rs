@@ -55,6 +55,7 @@ pub mod task;
 pub mod tcp;
 pub mod testutil;
 pub mod timer;
+pub mod top;
 pub mod ulib;
 pub mod userlib;
 pub mod version;
