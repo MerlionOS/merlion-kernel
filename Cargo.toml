@@ -6,10 +6,11 @@ authors = ["MerlionOS Contributors"]
 description = "A Singapore-inspired hobby operating system kernel"
 
 [dependencies]
-bootloader = "0.9"
+bootloader = { version = "0.9", features = ["map_physical_memory"] }
 x86_64 = "0.14"
 spin = "0.9"
 pic8259 = "0.10"
+linked_list_allocator = "0.10"
 
 [profile.dev]
 panic = "abort"

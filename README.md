@@ -31,7 +31,7 @@ The bootable image is created at:
 make run
 ```
 
-This opens a QEMU window with the VGA boot banner. Serial output (kernel logs) is printed to your terminal.
+This opens a QEMU window with the VGA boot banner. Serial output (kernel logs) is printed to your terminal. Keyboard input in the QEMU window is echoed to serial.
 
 To run headless (serial only, no GUI window):
 
@@ -52,25 +52,27 @@ merlion-kernel/
 │   ├── vga.rs               # VGA text mode buffer writer
 │   ├── serial.rs            # UART serial port driver (COM1)
 │   ├── gdt.rs               # Global Descriptor Table + TSS
-│   └── interrupts.rs        # IDT, exception and interrupt handlers
+│   ├── interrupts.rs        # IDT, exception and interrupt handlers
+│   ├── keyboard.rs          # PS/2 scancode set 1 decoder
+│   ├── memory.rs            # Page table access + frame allocator
+│   └── allocator.rs         # Kernel heap allocator
 └── README.md
 ```
 
-## Current Status (Phase 2)
+## Current Status (Phase 3)
 
 - Boots in QEMU via `bootloader` crate
-- Reaches Rust kernel entry point
-- Prints "Hello from MerlionOS!" to VGA text buffer
-- Serial port logging (COM1/UART) with `serial_println!` macro
-- Panic handler outputs to both serial (with location) and VGA (red text)
-- GDT with TSS (separate double fault stack)
-- IDT with breakpoint and double fault exception handlers
-- PIC initialization and PIT timer interrupt handling
-- CPU halts cleanly after boot
+- VGA text mode banner and serial logging
+- GDT/TSS, IDT with exception handlers (breakpoint, double fault)
+- PIC + PIT timer interrupt + PS/2 keyboard input (IRQ1)
+- Physical memory frame allocator (from bootloader memory map)
+- Page table access via bootloader's physical memory mapping
+- 64K kernel heap with linked-list allocator
+- Panic handler outputs to both serial and VGA
 
-## Next Milestone (Phase 3)
+## Next Milestone (Phase 4)
 
-- Keyboard input (PS/2 via IRQ1)
-- Basic heap allocator
-- Physical memory management (frame allocator)
-- Page table setup / virtual memory
+- VGA text mode scrolling and cursor
+- Shell-like command input over serial or VGA
+- Improved frame allocator (bitmap or buddy)
+- User-mode groundwork (ring 3 transition)

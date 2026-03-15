@@ -2,16 +2,24 @@
 #![no_main]
 #![feature(abi_x86_interrupt)]
 
+extern crate alloc;
+
+mod allocator;
 mod gdt;
 mod interrupts;
+mod keyboard;
+mod memory;
 mod serial;
 mod vga;
 
 use core::panic::PanicInfo;
+use bootloader::{entry_point, BootInfo};
+use alloc::vec::Vec;
 
-/// Kernel entry point, called by the bootloader.
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+entry_point!(kernel_main);
+
+/// Kernel entry point, called by the bootloader with boot info.
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
     serial::SERIAL1.lock().init();
     serial_println!("MerlionOS v0.1.0 booting...");
 
@@ -24,7 +32,28 @@ pub extern "C" fn _start() -> ! {
     interrupts::init();
     serial_println!("[ok] IDT loaded, interrupts enabled");
 
-    serial_println!("Kernel initialization complete. Halting.");
+    // Set up virtual memory and frame allocator
+    let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    let mut frame_allocator = unsafe {
+        memory::BootInfoFrameAllocator::init(&boot_info.memory_map)
+    };
+    serial_println!("[ok] Page table and frame allocator initialized");
+
+    // Set up the kernel heap
+    allocator::init(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
+    serial_println!("[ok] Heap allocator initialized ({}K)", allocator::HEAP_SIZE / 1024);
+
+    // Quick test: allocate on the heap to prove it works
+    let mut v = Vec::new();
+    for i in 0..10 {
+        v.push(i);
+    }
+    serial_println!("[ok] Heap test passed: {:?}", v);
+
+    serial_println!("Kernel initialization complete.");
+    serial_println!("Keyboard input active — type in the QEMU window.");
     halt_loop();
 }
 
@@ -38,10 +67,8 @@ pub fn halt_loop() -> ! {
 /// Panic handler — prints to both serial and VGA, then halts.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    // Print full panic info to serial (includes file, line, message)
     serial_println!("KERNEL PANIC: {}", info);
 
-    // Also show a brief message on VGA (last row, red)
     const PANIC_ATTR: u8 = 0x0C;
     let vga = 0xB8000 as *mut u8;
     let row_offset = 24 * 80 * 2;

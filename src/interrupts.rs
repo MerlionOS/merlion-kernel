@@ -12,9 +12,11 @@ const PIC_OFFSET_PRIMARY: u8 = 32;
 const PIC_OFFSET_SECONDARY: u8 = PIC_OFFSET_PRIMARY + 8;
 
 /// Hardware interrupt numbers (offset from PIC_OFFSET_PRIMARY).
+#[derive(Clone, Copy)]
 #[repr(u8)]
 enum HardwareInterrupt {
     Timer = PIC_OFFSET_PRIMARY,
+    Keyboard = PIC_OFFSET_PRIMARY + 1,
 }
 
 /// 8259 PIC pair, remapped to interrupts 32–47.
@@ -35,6 +37,7 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
 
     // Hardware interrupts
     idt[HardwareInterrupt::Timer as u8 as usize].set_handler_fn(timer_handler);
+    idt[HardwareInterrupt::Keyboard as u8 as usize].set_handler_fn(keyboard_handler);
 
     idt
 });
@@ -64,9 +67,25 @@ extern "x86-interrupt" fn double_fault_handler(
 // --- Hardware interrupt handlers ---
 
 extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
-    // Acknowledge the interrupt so the PIC sends future interrupts
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(HardwareInterrupt::Timer as u8);
+    }
+}
+
+extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
+    use x86_64::instructions::port::Port;
+    use crate::keyboard;
+
+    // Read the scancode from the PS/2 data port
+    let scancode: u8 = unsafe { Port::new(0x60).read() };
+
+    if let Some(ch) = keyboard::scancode_to_ascii(scancode) {
+        serial_println!("key: '{}'", ch);
+    }
+
+    unsafe {
+        PICS.lock()
+            .notify_end_of_interrupt(HardwareInterrupt::Keyboard as u8);
     }
 }
