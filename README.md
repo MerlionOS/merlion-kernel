@@ -104,13 +104,13 @@ src/
 └── vga.rs           # VGA console with ANSI color support
 ```
 
-## Current Status (Phase 12)
+## Current Status (Phase 13)
 
-- 21 source modules, ~3200 lines of Rust
-- Software framebuffer: 160x50 pixel graphics via half-block characters
-- Drawing primitives: pixel, line, rect, circle (filled and outline)
-- Singapore flag demo with `gfx` command
-- Bresenham line algorithm, midpoint circle algorithm
+- 23 source modules, ~3700 lines of Rust
+- PCI bus enumeration (`lspci` command)
+- 128K RAM disk with custom "MRLN" filesystem
+- Block device: format, save, load, list files
+- Software framebuffer with 160x50 pixel graphics
 
 ## Roadmap
 
@@ -128,7 +128,7 @@ src/
 | 10 | ACPI power management, ANSI colors, driver framework | Done |
 | 11 | RTC clock, kernel self-tests, lib.rs refactor | Done |
 | 12 | Framebuffer graphics, basic drawing primitives | Done |
-| 13 | Virtio-blk storage driver, simple filesystem on disk | Planned |
+| 13 | PCI bus scan, RAM disk, block filesystem | Done |
 | 14 | Virtio-net networking, ARP, UDP | Planned |
 | 15 | SMP/multicore (AP startup, per-CPU scheduling) | Planned |
 | 16 | Separate user-space crate, ELF loader, libc | Planned |

@@ -74,4 +74,5 @@ pub fn init() {
     register("pit", DriverKind::Timer);
     register("ps2-kbd", DriverKind::Keyboard);
     register("vfs", DriverKind::Filesystem);
+    register("ramdisk", DriverKind::Block);
 }

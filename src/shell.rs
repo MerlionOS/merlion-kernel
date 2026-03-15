@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -85,6 +85,12 @@ fn dispatch(cmd: &str) {
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
             println!("  clear      - clear screen");
+            println!("  lspci      - list PCI devices");
+            println!("  disk       - RAM disk status");
+            println!("  format     - format RAM disk");
+            println!("  dsave <n> <d> - save file to disk");
+            println!("  dload <n>  - load file from disk");
+            println!("  dls        - list disk files");
             println!("  gfx        - graphics demo (160x50)");
             println!("  test       - run kernel self-tests");
             println!("  shutdown   - power off");
@@ -218,6 +224,72 @@ fn dispatch(cmd: &str) {
             println!("  \x1b[1mNAME        KIND      STATUS\x1b[0m");
             for (name, kind, status) in driver::list() {
                 println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
+            }
+        }
+        "lspci" => {
+            let devices = pci::scan();
+            if devices.is_empty() {
+                println!("No PCI devices found.");
+            } else {
+                println!("  \x1b[1mBUS:DEV.FN  VID:DID  CLASS            VENDOR\x1b[0m");
+                for d in devices {
+                    println!("  {}", d.summary());
+                }
+            }
+        }
+        "format" => {
+            ramdisk::RAMDISK.lock().format();
+            println!("RAM disk formatted (128K, MRLN filesystem).");
+        }
+        "disk" => {
+            let rd = ramdisk::RAMDISK.lock();
+            if rd.is_formatted() {
+                let files = rd.list_files();
+                let used = rd.used_bytes();
+                println!("RAM disk: formatted, {} files, {} bytes used / {} total",
+                    files.len(), used, 128 * 1024 - 16 * 512);
+            } else {
+                println!("RAM disk: not formatted (use 'format' first)");
+            }
+        }
+        "dls" => {
+            let rd = ramdisk::RAMDISK.lock();
+            if !rd.is_formatted() {
+                println!("Disk not formatted.");
+            } else {
+                let files = rd.list_files();
+                if files.is_empty() {
+                    println!("No files on disk.");
+                } else {
+                    println!("  \x1b[1mSIZE  NAME\x1b[0m");
+                    for (name, size) in files {
+                        println!("  {:>5}  {}", size, name);
+                    }
+                }
+            }
+        }
+        cmd if cmd.starts_with("dsave ") => {
+            let rest = cmd[6..].trim();
+            if let Some((name, data)) = rest.split_once(' ') {
+                match ramdisk::RAMDISK.lock().write_file(name, data.as_bytes()) {
+                    Ok(()) => println!("Saved '{}' ({} bytes)", name, data.len()),
+                    Err(e) => println!("dsave: {}", e),
+                }
+            } else {
+                println!("Usage: dsave <name> <data>");
+            }
+        }
+        cmd if cmd.starts_with("dload ") => {
+            let name = cmd[6..].trim();
+            match ramdisk::RAMDISK.lock().read_file(name) {
+                Some(data) => {
+                    if let Ok(s) = core::str::from_utf8(&data) {
+                        println!("{}", s);
+                    } else {
+                        println!("({} bytes, binary)", data.len());
+                    }
+                }
+                None => println!("dload: file '{}' not found", name),
             }
         }
         "gfx" => {
