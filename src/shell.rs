@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -244,6 +244,7 @@ pub fn dispatch(cmd: &str) {
             println!("  tcprecv <id> - TCP receive");
             println!("  tcpclose <id> - TCP close");
             println!("  netstat    - TCP connections");
+            println!("  tcppoll    - poll incoming TCP segments");
             println!("  virtio     - virtio devices");
             println!("  blkdevs    - block devices");
             println!("  diskread <s> - read sector from virtio disk");
@@ -290,7 +291,7 @@ pub fn dispatch(cmd: &str) {
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
             println!("Hardware:");
-            println!("  wget <url> - build HTTP request (TCP pending)");
+            println!("  wget <url> - fetch URL via real TCP connection");
             println!("  ifup       - DHCP discover sequence");
             println!("  dns <host> - resolve hostname");
             println!("  ahciinfo   - AHCI controller status");
@@ -852,7 +853,7 @@ pub fn dispatch(cmd: &str) {
             let (ip_str, port_str) = target.rsplit_once(':').unwrap_or((target, "80"));
             if let Some(ip) = net::resolve(ip_str) {
                 let port = port_str.parse::<u16>().unwrap_or(80);
-                match tcp::connect(ip, port) {
+                match tcp_real::connect(ip, port) {
                     Ok(id) => println!("Connected: conn {} to {}:{}", id, ip, port),
                     Err(e) => println!("tcpconn: {}", e),
                 }
@@ -864,7 +865,7 @@ pub fn dispatch(cmd: &str) {
             let rest = cmd[8..].trim();
             if let Some((id_str, data)) = rest.split_once(' ') {
                 if let Ok(id) = id_str.parse::<usize>() {
-                    match tcp::send(id, data.as_bytes()) {
+                    match tcp_real::send(id, data.as_bytes()) {
                         Ok(n) => println!("Sent {} bytes on conn {}", n, id),
                         Err(e) => println!("tcpsend: {}", e),
                     }
@@ -875,7 +876,7 @@ pub fn dispatch(cmd: &str) {
         }
         cmd if cmd.starts_with("tcprecv ") => {
             if let Ok(id) = cmd[8..].trim().parse::<usize>() {
-                match tcp::recv(id) {
+                match tcp_real::recv(id) {
                     Ok(data) if data.is_empty() => println!("(no data)"),
                     Ok(data) => {
                         if let Ok(s) = core::str::from_utf8(&data) {
@@ -890,20 +891,20 @@ pub fn dispatch(cmd: &str) {
         }
         cmd if cmd.starts_with("tcpclose ") => {
             if let Ok(id) = cmd[9..].trim().parse::<usize>() {
-                match tcp::close(id) {
+                match tcp_real::close(id) {
                     Ok(()) => println!("Connection {} closed", id),
                     Err(e) => println!("tcpclose: {}", e),
                 }
             }
         }
         "netstat" => {
-            let conns = tcp::list();
-            if conns.is_empty() {
+            let sockets = tcp_real::list_sockets();
+            if sockets.is_empty() {
                 println!("No TCP connections.");
             } else {
-                println!("  \x1b[1mID  CONNECTION\x1b[0m");
-                for (id, desc) in conns {
-                    println!("  {:2}  {}", id, desc);
+                println!("  \x1b[1mID  LOCAL              REMOTE             STATE\x1b[0m");
+                for (id, lip, lport, rip, rport, state) in sockets {
+                    println!("  {:2}  {}:{:<5}  {}:{:<5}  {:?}", id, lip, lport, rip, rport, state);
                 }
             }
         }
@@ -1525,6 +1526,10 @@ pub fn dispatch(cmd: &str) {
             let dst_ip = [10, 0, 2, 2]; // gateway
             netstack::send_udp(dst_ip, 12345, 8080, msg.as_bytes());
             println!("Sent {} bytes via NIC to 10.0.2.2:8080", msg.len());
+        }
+        "tcppoll" => {
+            let n = tcp_real::poll_incoming();
+            println!("Processed {} incoming TCP segment(s).", n);
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

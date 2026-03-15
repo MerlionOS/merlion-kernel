@@ -1,16 +1,12 @@
-/// wget — fetch a web page over HTTP/1.1.
-/// Integrates HTTP client with the TCP/network stack.
+/// wget — fetch a web page over HTTP/1.1 using the real TCP stack.
+/// Integrates HTTP client with tcp_real for genuine TCP connections.
 ///
 ///   wget http://10.0.2.2:8080/       — fetch from host
-///   wget http://example.com/          — fetch from internet (needs DNS+TCP)
-///
-/// Current implementation builds the HTTP request and shows what
-/// would be sent. Full end-to-end requires tcp_real.rs to be
-/// connected to netstack.rs.
+///   wget http://example.com/          — fetch from internet (needs DNS)
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use crate::{http, serial_println, println, print};
+use crate::{http, serial_println, println, print, tcp_real, net};
 
 /// Fetch a URL and display the result.
 pub fn fetch(url: &str) -> Result<String, &'static str> {
@@ -73,46 +69,82 @@ fn resolve_host(host: &str) -> Result<[u8; 4], &'static str> {
     }
 }
 
-/// Attempt to fetch via the real network stack.
-/// Returns the raw HTTP response bytes.
+/// Fetch via the real TCP stack (tcp_real).
+/// Performs a genuine 3-way handshake, sends the HTTP request, receives
+/// the response, and tears down the connection.
 fn try_network_fetch(ip: [u8; 4], port: u16, request: &[u8]) -> Result<Vec<u8>, &'static str> {
-    // For now, construct a simulated response for localhost/gateway
-    // Real implementation requires tcp_real.rs connection
-    if ip == [127, 0, 0, 1] || ip == [10, 0, 2, 15] {
-        // Loopback: generate a local response
-        let body = alloc::format!(
-            "<html><body><h1>MerlionOS</h1>\
-             <p>Born for AI. Built by AI.</p>\
-             <p>Served from localhost</p></body></html>"
-        );
-        let response = alloc::format!(
-            "HTTP/1.1 200 OK\r\n\
-             Content-Type: text/html\r\n\
-             Content-Length: {}\r\n\
-             Server: MerlionOS/7.0\r\n\
-             Connection: close\r\n\
-             \r\n\
-             {}",
-            body.len(), body
-        );
-        return Ok(response.into_bytes());
+    let dst = net::Ipv4Addr(ip);
+
+    // Open a real TCP connection
+    let conn = tcp_real::connect(dst, port)?;
+    serial_println!("[wget] TCP connected, conn={}", conn);
+
+    // Wait for the connection to reach Established (SYN-ACK handshake).
+    // Poll incoming segments while we wait.
+    let deadline = crate::timer::ticks() + 500; // ~5 seconds at 100 Hz
+    loop {
+        tcp_real::poll_incoming();
+        if let Some(tcp_real::TcpState::Established) = tcp_real::socket_state(conn) {
+            break;
+        }
+        if crate::timer::ticks() > deadline {
+            let _ = tcp_real::close(conn);
+            return Err("TCP connect timeout");
+        }
+        x86_64::instructions::hlt();
+    }
+    println!("Connected.");
+
+    // Send the HTTP request
+    tcp_real::send(conn, request)?;
+    serial_println!("[wget] sent {} bytes on conn {}", request.len(), conn);
+
+    // Receive the response — keep polling until the connection closes
+    // or we stop getting new data.
+    let mut response = Vec::new();
+    let mut idle_ticks: u64 = 0;
+    let idle_limit: u64 = 200; // ~2 seconds of no new data
+    loop {
+        tcp_real::poll_incoming();
+        match tcp_real::recv(conn) {
+            Ok(data) if !data.is_empty() => {
+                response.extend_from_slice(&data);
+                idle_ticks = 0;
+            }
+            _ => {
+                idle_ticks += 1;
+                if idle_ticks > idle_limit {
+                    break;
+                }
+                // Check if connection was closed by peer
+                match tcp_real::socket_state(conn) {
+                    Some(tcp_real::TcpState::CloseWait)
+                    | Some(tcp_real::TcpState::Closed)
+                    | Some(tcp_real::TcpState::TimeWait)
+                    | None => {
+                        // Drain any remaining data
+                        if let Ok(data) = tcp_real::recv(conn) {
+                            if !data.is_empty() {
+                                response.extend_from_slice(&data);
+                            }
+                        }
+                        break;
+                    }
+                    _ => {}
+                }
+                x86_64::instructions::hlt();
+            }
+        }
     }
 
-    // For external hosts, send via netstack (UDP for now as TCP isn't connected)
-    // This is a placeholder — real TCP connection needed
-    crate::netstack::send_udp(ip, 12345, port, request);
-    println!("Request sent via UDP (TCP connection pending).");
+    // Close our side
+    let _ = tcp_real::close(conn);
+    serial_println!("[wget] received {} bytes total", response.len());
 
-    // Generate a status response
-    let response = alloc::format!(
-        "HTTP/1.1 000 Pending\r\n\
-         X-MerlionOS: TCP stack not yet connected to netstack\r\n\
-         X-Request-Sent-To: {}.{}.{}.{}:{}\r\n\
-         \r\n\
-         (Awaiting tcp_real.rs integration for full HTTP fetch)",
-        ip[0], ip[1], ip[2], ip[3], port
-    );
-    Ok(response.into_bytes())
+    if response.is_empty() {
+        return Err("empty response");
+    }
+    Ok(response)
 }
 
 /// Simple HTTP server response (for when MerlionOS acts as a server).
