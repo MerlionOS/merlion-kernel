@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, smp, env, module, slab, ksyms, paging, virtio, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, semfs, agent, script};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -96,11 +96,16 @@ pub fn handle_key_event(event: KeyEvent) {
                 };
                 let cmd = resolved.trim();
 
-                if let Some((left, right)) = cmd.split_once(" > ") {
-                    dispatch(left.trim());
-                    let _ = vfs::write(right.trim(), left.trim());
+                // Semicolon chaining: cmd1 ; cmd2 ; cmd3
+                if cmd.contains(';') {
+                    for sub in cmd.split(';') {
+                        let sub = sub.trim();
+                        if !sub.is_empty() {
+                            execute_single(sub);
+                        }
+                    }
                 } else {
-                    dispatch(cmd);
+                    execute_single(cmd);
                 }
             }
             prompt();
@@ -143,7 +148,17 @@ pub fn handle_key_event(event: KeyEvent) {
     }
 }
 
-fn dispatch(cmd: &str) {
+/// Execute a single command, handling output redirection.
+fn execute_single(cmd: &str) {
+    if let Some((left, right)) = cmd.split_once(" > ") {
+        dispatch(left.trim());
+        let _ = vfs::write(right.trim(), left.trim());
+    } else {
+        dispatch(cmd);
+    }
+}
+
+pub fn dispatch(cmd: &str) {
     serial_println!("shell: {}", cmd);
 
     match cmd {
@@ -160,6 +175,8 @@ fn dispatch(cmd: &str) {
             println!("  cat <path> - read file");
             println!("  write <path> <data> - write to file");
             println!("  rm <path>  - remove file");
+            println!("  wc <path>  - count lines/bytes");
+            println!("  exec <path> - run shell script");
             println!("  open <p>   - open file descriptor");
             println!("  close <fd> - close file descriptor");
             println!("  lsof       - list open file descriptors");
@@ -351,6 +368,25 @@ fn dispatch(cmd: &str) {
         }
 
         // --- System ---
+        cmd if cmd.starts_with("wc ") => {
+            let path = cmd[3..].trim();
+            match vfs::cat(path) {
+                Ok(content) => {
+                    let lines = content.lines().count();
+                    let bytes = content.len();
+                    let words = content.split_whitespace().count();
+                    println!("  {} lines, {} words, {} bytes  {}", lines, words, bytes, path);
+                }
+                Err(e) => println!("wc: {}: {}", path, e),
+            }
+        }
+        cmd if cmd.starts_with("exec ") => {
+            let path = cmd[5..].trim();
+            match script::run_script(path) {
+                Ok(n) => println!("Executed {} commands from {}", n, path),
+                Err(e) => println!("exec: {}", e),
+            }
+        }
         cmd if cmd.starts_with("open ") => {
             let path = cmd[5..].trim();
             match fd::open(path) {

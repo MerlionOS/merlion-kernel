@@ -69,6 +69,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     semfs::init();
     ai_proxy::init();
     agent::init();
+    script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
     println!("[ok] SMP: {} CPU(s) online", smp::online_cpus());
@@ -96,9 +97,35 @@ pub fn halt_loop() -> ! {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    // Disable interrupts to prevent further damage
+    x86_64::instructions::interrupts::disable();
+
+    serial_println!("\n══════════════════════════════════════");
     serial_println!("KERNEL PANIC: {}", info);
-    klog_println!("KERNEL PANIC: {}", info);
-    println!("\nKERNEL PANIC: {}", info);
+
+    // AI-assisted diagnosis
+    let msg = alloc::format!("{}", info);
+    let (category, _) = ai_syscall::classify(&msg);
+    serial_println!("[ai-diagnosis] Category: {}", category);
+
+    if msg.contains("page fault") {
+        serial_println!("[ai-diagnosis] Likely cause: invalid memory access");
+        serial_println!("[ai-diagnosis] Check for null pointers or stack overflow");
+    } else if msg.contains("double fault") {
+        serial_println!("[ai-diagnosis] Likely cause: unhandled exception during exception handling");
+        serial_println!("[ai-diagnosis] Stack overflow is the most common trigger");
+    } else if msg.contains("alloc") || msg.contains("heap") {
+        serial_println!("[ai-diagnosis] Likely cause: out of memory");
+        serial_println!("[ai-diagnosis] Heap size: {}K", allocator::HEAP_SIZE / 1024);
+    }
+
+    serial_println!("══════════════════════════════════════");
+
+    // VGA output (simpler, no alloc)
+    println!("\n\x1b[31m══ KERNEL PANIC ══\x1b[0m");
+    println!("{}", info);
+    println!("\x1b[33m[ai] category: {}\x1b[0m", category);
+    println!("\x1b[90mSystem halted. Reboot with 'reboot' is not possible.\x1b[0m");
 
     halt_loop();
 }

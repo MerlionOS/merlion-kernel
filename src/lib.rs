@@ -34,6 +34,7 @@ pub mod pci;
 pub mod process;
 pub mod ramdisk;
 pub mod rtc;
+pub mod script;
 pub mod semfs;
 pub mod serial;
 pub mod slab;
