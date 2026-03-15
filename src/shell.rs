@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -76,6 +76,7 @@ fn dispatch(cmd: &str) {
             println!("  rm <path>  - remove file");
             println!("System commands:");
             println!("  info       - system information");
+            println!("  date       - current date and time");
             println!("  uptime     - time since boot");
             println!("  heap       - heap stats");
             println!("  memmap     - physical memory map");
@@ -84,6 +85,7 @@ fn dispatch(cmd: &str) {
             println!("  channels   - list IPC channels");
             println!("  dmesg      - kernel log");
             println!("  clear      - clear screen");
+            println!("  test       - run kernel self-tests");
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
@@ -97,6 +99,10 @@ fn dispatch(cmd: &str) {
             println!("PIT rate:     {} Hz", timer::PIT_FREQUENCY_HZ);
             println!("Drivers:      {}", driver::list().len());
             println!("Max tasks:    8");
+        }
+        "date" => {
+            let dt = rtc::read();
+            println!("{}", dt);
         }
         "uptime" => {
             let (h, m, s) = timer::uptime_hms();
@@ -212,6 +218,12 @@ fn dispatch(cmd: &str) {
             for (name, kind, status) in driver::list() {
                 println!("  {:<11} {:<9} \x1b[32m{}\x1b[0m", name, kind, status);
             }
+        }
+        "test" => {
+            println!("\x1b[1m=== Kernel Self-Tests ===\x1b[0m");
+            serial_println!("=== Kernel Self-Tests ===");
+            let (passed, total) = testutil::run_all();
+            serial_println!("{}/{} tests passed", passed, total);
         }
         "shutdown" => {
             println!("\x1b[33mShutting down...\x1b[0m");

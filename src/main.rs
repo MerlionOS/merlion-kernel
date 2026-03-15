@@ -1,29 +1,10 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt)]
-
 extern crate alloc;
-
-mod acpi;
-mod allocator;
-mod driver;
-mod gdt;
-mod interrupts;
-mod ipc;
-mod keyboard;
-mod log;
-mod memory;
-mod process;
-mod serial;
-mod shell;
-mod syscall;
-mod task;
-mod timer;
-mod vfs;
-mod vga;
 
 use core::panic::PanicInfo;
 use bootloader::{entry_point, BootInfo};
+use merlion_kernel::*;
 
 entry_point!(kernel_main);
 
@@ -45,13 +26,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] IDT + interrupts enabled");
     serial_println!("[ok] IDT loaded, interrupts enabled");
 
-    // Initialize memory system (page tables + global frame allocator)
     let phys_mem_offset = x86_64::VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { memory::init(phys_mem_offset, &boot_info.memory_map) };
     println!("[ok] Memory initialized");
     serial_println!("[ok] Page table and frame allocator initialized");
 
-    // Initialize heap using the global frame allocator
     memory::with_frame_allocator(|fa| {
         allocator::init(&mut mapper, fa)
             .expect("heap initialization failed");
@@ -70,6 +49,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     driver::init();
     println!("[ok] Drivers registered");
     serial_println!("[ok] Drivers registered");
+
+    // Show date/time from RTC
+    let dt = rtc::read();
+    println!("[ok] RTC: {}", dt);
+    serial_println!("[ok] RTC: {}", dt);
 
     klog_println!("Kernel initialization complete.");
     println!();
