@@ -8,8 +8,8 @@ pub const ARCH: &str = "x86_64";
 pub const SLOGAN: &str = "Born for AI. Built by AI.";
 pub const SLOGAN_CN: &str = "生于AI，成于AI";
 
-pub const MODULES: usize = 84;
-pub const COMMANDS: usize = 120;
+pub const MODULES: usize = 99;
+pub const COMMANDS: usize = 135;
 
 /// Repository URL.
 pub const REPO: &str = "https://github.com/MerlionOS/merlion-kernel";
@@ -18,12 +18,12 @@ pub const LICENSE: &str = "MIT";
 
 /// Full version string.
 pub fn full() -> &'static str {
-    concat!("MerlionOS v7.0.0 (", "x86_64", ")")
+    concat!("MerlionOS v10.0.0 (", "x86_64", ")")
 }
 
 /// One-line banner.
 pub fn banner() -> &'static str {
-    "MerlionOS v7.0.0 — Born for AI. Built by AI."
+    "MerlionOS v10.0.0 — Born for AI. Built by AI."
 }
 
 /// Build info for display.
