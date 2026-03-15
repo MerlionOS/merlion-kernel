@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, smp, env};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -85,6 +85,17 @@ pub fn handle_key_event(event: KeyEvent) {
                 .unwrap_or("")
                 .trim();
             if !cmd.is_empty() {
+                // Expand $VAR references
+                let expanded = env::expand(cmd);
+                let cmd = expanded.trim();
+                // Check alias
+                let resolved = if let Some(alias_cmd) = env::resolve_alias(cmd) {
+                    alias_cmd
+                } else {
+                    alloc::string::String::from(cmd)
+                };
+                let cmd = resolved.trim();
+
                 if let Some((left, right)) = cmd.split_once(" > ") {
                     dispatch(left.trim());
                     let _ = vfs::write(right.trim(), left.trim());
@@ -407,6 +418,36 @@ fn dispatch(cmd: &str) {
             println!("{}", cmd[5..].trim());
         }
         "echo" => println!(),
+        "env" => {
+            for (k, v) in env::list() {
+                println!("  {}={}", k, v);
+            }
+        }
+        cmd if cmd.starts_with("set ") => {
+            let rest = cmd[4..].trim();
+            if let Some((key, val)) = rest.split_once('=') {
+                env::set(key.trim(), val.trim());
+            } else {
+                println!("Usage: set KEY=VALUE");
+            }
+        }
+        cmd if cmd.starts_with("unset ") => {
+            env::unset(cmd[6..].trim());
+        }
+        cmd if cmd.starts_with("alias ") => {
+            let rest = cmd[6..].trim();
+            if let Some((name, command)) = rest.split_once('=') {
+                env::set_alias(name.trim(), command.trim());
+                println!("alias {}='{}'", name.trim(), command.trim());
+            } else {
+                println!("Usage: alias name=command");
+            }
+        }
+        "alias" => {
+            for (name, cmd) in env::list_aliases() {
+                println!("  {}='{}'", name, cmd);
+            }
+        }
         "history" => {
             let shell = SHELL.lock();
             let start = if shell.history_count > HISTORY_SIZE {

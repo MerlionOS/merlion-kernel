@@ -7,6 +7,7 @@ pub mod acpi;
 pub mod framebuf;
 pub mod allocator;
 pub mod driver;
+pub mod env;
 pub mod gdt;
 pub mod interrupts;
 pub mod ipc;

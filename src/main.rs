@@ -50,6 +50,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] Drivers registered");
     serial_println!("[ok] Drivers registered");
 
+    env::init();
+
     smp::init();
     println!("[ok] SMP: {} CPU(s) online", smp::online_cpus());
     serial_println!("[ok] SMP initialized");
