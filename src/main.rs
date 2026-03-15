@@ -12,6 +12,7 @@ mod log;
 mod memory;
 mod serial;
 mod shell;
+mod task;
 mod timer;
 mod usermode;
 mod vga;
@@ -56,6 +57,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("[ok] Heap ready ({}K)", allocator::HEAP_SIZE / 1024);
     klog_println!("[ok] Heap allocator initialized ({}K)", allocator::HEAP_SIZE / 1024);
     serial_println!("[ok] Heap allocator initialized ({}K)", allocator::HEAP_SIZE / 1024);
+
+    task::init();
+    println!("[ok] Task system ready");
+    klog_println!("[ok] Task system initialized");
+    serial_println!("[ok] Task system initialized");
 
     println!();
     println!("Type 'help' for available commands.");

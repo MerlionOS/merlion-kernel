@@ -22,7 +22,7 @@ make build
 make run
 ```
 
-Opens a QEMU window with the VGA console. Serial log output goes to your terminal. Type commands in the QEMU window.
+Opens a QEMU window with the VGA console. Serial output goes to your terminal. Type commands in the QEMU window.
 
 Headless (serial only):
 
@@ -38,6 +38,8 @@ make run-serial
 | `info`   | System information |
 | `uptime` | Time since boot |
 | `heap`   | Heap allocator statistics |
+| `ps`     | List running tasks |
+| `spawn`  | Spawn a demo task |
 | `dmesg`  | Kernel log ring buffer |
 | `clear`  | Clear screen |
 | `umode`  | Test user-mode (ring 3) transition |
@@ -53,34 +55,34 @@ merlion-kernel/
 ├── Makefile                  # Build/run shortcuts
 ├── src/
 │   ├── main.rs              # Kernel entry point and panic handler
-│   ├── vga.rs               # VGA text console with scrolling and cursor
+│   ├── vga.rs               # VGA text console with scrolling
 │   ├── serial.rs            # UART serial port driver (COM1)
 │   ├── gdt.rs               # GDT with kernel + user segments, TSS
-│   ├── interrupts.rs        # IDT: exceptions, hardware IRQs, syscall
+│   ├── interrupts.rs        # IDT: exceptions, IRQs, syscall
 │   ├── keyboard.rs          # PS/2 scancode set 1 decoder
 │   ├── memory.rs            # Page table access + frame allocator
 │   ├── allocator.rs         # Kernel heap allocator
-│   ├── timer.rs             # PIT tick counter and uptime tracking
+│   ├── timer.rs             # PIT tick counter and uptime
 │   ├── log.rs               # Kernel log ring buffer (dmesg)
-│   ├── usermode.rs          # Ring 3 transition via iretq + int 0x80
+│   ├── task.rs              # Task management + context switching
+│   ├── usermode.rs          # Ring 3 transition via iretq
 │   └── shell.rs             # Interactive kernel shell
 └── README.md
 ```
 
-## Current Status (Phase 5)
+## Current Status (Phase 6)
 
-- PIT timer at 100 Hz with uptime tracking
-- Kernel log ring buffer (4K) with `dmesg` command
-- Page fault handler with diagnostic output
-- GDT user-mode segments (ring 3 code/data)
-- TSS kernel stack for privilege transitions
-- Syscall handler (int 0x80) callable from ring 3
-- User-mode proof-of-concept via iretq
+- Kernel task (thread) management with PID tracking
+- Cooperative and preemptive context switching
+- Round-robin scheduler triggered by timer interrupt
+- Naked function context switch (callee-saved registers + RSP)
+- Per-task heap-allocated stacks (16K each)
+- `spawn` / `ps` shell commands
+- Demo tasks that print, yield, and exit
 
-## Next Milestone (Phase 6)
+## Next Milestone (Phase 7)
 
-- Process abstraction (PCB, PID)
-- Per-process page tables
-- ELF binary loader (minimal)
-- Context switching between kernel tasks
-- Syscall interface expansion (write, exit)
+- Per-process page tables (address space isolation)
+- Minimal ELF binary loader
+- Expanded syscall interface (write, exit, yield)
+- Process lifecycle (fork-like spawning)

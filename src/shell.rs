@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer};
+use crate::{print, println, serial_println, allocator, timer, task};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -23,7 +23,6 @@ pub fn prompt() {
     print!("merlion> ");
 }
 
-/// Called from the keyboard handler for each character.
 pub fn handle_key(ch: char) {
     let mut input = INPUT.lock();
 
@@ -68,6 +67,8 @@ fn dispatch(cmd: &str) {
             println!("  info    - system information");
             println!("  uptime  - time since boot");
             println!("  heap    - heap allocator stats");
+            println!("  ps      - list running tasks");
+            println!("  spawn   - spawn a demo task");
             println!("  dmesg   - kernel log buffer");
             println!("  clear   - clear screen");
             println!("  umode   - test user-mode transition");
@@ -88,6 +89,24 @@ fn dispatch(cmd: &str) {
             let stats = allocator::stats();
             println!("Heap: {} used / {} free / {} total bytes",
                 stats.used, stats.free, stats.total);
+        }
+        "ps" => {
+            println!("  PID  STATE    NAME");
+            for t in task::list() {
+                let state_str = match t.state {
+                    task::TaskState::Running  => "running ",
+                    task::TaskState::Ready    => "ready   ",
+                    task::TaskState::Finished => "finished",
+                };
+                println!("  {:3}  {}  {}", t.pid, state_str, t.name);
+            }
+        }
+        "spawn" => {
+            if let Some(pid) = task::spawn("demo", demo_task) {
+                println!("Spawned demo task (pid {})", pid);
+            } else {
+                println!("Task table full!");
+            }
         }
         "dmesg" => {
             crate::log::KLOG.lock().read(|chunk| {
@@ -112,4 +131,16 @@ fn dispatch(cmd: &str) {
             println!("type 'help' for available commands");
         }
     }
+}
+
+/// Demo task: prints messages, yields between each, then exits.
+fn demo_task() {
+    for i in 1..=5 {
+        serial_println!("[demo] iteration {}/5", i);
+        println!("[demo] iteration {}/5", i);
+        // Yield to let other tasks run
+        task::yield_now();
+    }
+    serial_println!("[demo] done");
+    println!("[demo] task complete");
 }

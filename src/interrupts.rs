@@ -96,6 +96,9 @@ extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
         PICS.lock()
             .notify_end_of_interrupt(HardwareInterrupt::Timer as u8);
     }
+
+    // Preemptive scheduling: yield on every timer tick
+    crate::task::timer_tick();
 }
 
 extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
