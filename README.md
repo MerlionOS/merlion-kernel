@@ -1,8 +1,10 @@
 # MerlionOS
 
+[![Build & Boot Test](https://github.com/MerlionOS/merlion-kernel/actions/workflows/build.yml/badge.svg)](https://github.com/MerlionOS/merlion-kernel/actions/workflows/build.yml)
+
 > **Born for AI. Built by AI.** — 生于AI，成于AI
 
-[中文文档](README_CN.md)
+[中文文档](README_CN.md) | [Architecture](docs/architecture.md) | [AI Native OS](docs/ai-native-os.md) | [Deep Dive](docs/deep-dive-roadmap.md)
 
 A Singapore-inspired AI-native hobby operating system written in Rust for x86_64.
 
