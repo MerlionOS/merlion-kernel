@@ -23,7 +23,20 @@ run-fullscreen:
 		-serial stdio \
 		-full-screen
 
-# Run with a virtio disk + network
+# Run with disk + network + LLM proxy (COM2 as PTY)
+run-ai: disk
+	@echo "Start the LLM proxy in another terminal:"
+	@echo "  python3 tools/llm-proxy.py <pty-path> --claude"
+	@echo ""
+	qemu-system-x86_64 \
+		-drive format=raw,file=$(KERNEL_BIN) \
+		-drive file=$(DISK_IMG),format=raw,if=virtio \
+		-netdev user,id=n0 \
+		-device virtio-net-pci,netdev=n0 \
+		-serial stdio \
+		-serial pty
+
+# Run with disk + network
 run-full: disk
 	qemu-system-x86_64 \
 		-drive format=raw,file=$(KERNEL_BIN) \
