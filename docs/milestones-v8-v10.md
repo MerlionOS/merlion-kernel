@@ -1,3 +1,5 @@
+[English Version](milestones-v8-v10-en.md)
+
 # MerlionOS 下三个里程碑规划
 
 > 当前：v7.0.0 — 87 模块，16,800+ 行 Rust，QEMU 运行

@@ -1,3 +1,5 @@
+[English Version](real-hardware-roadmap-en.md)
+
 # MerlionOS 真机运行路线图
 
 > 目标：在一台 HP 笔记本上启动 MerlionOS，进入命令行，联网。

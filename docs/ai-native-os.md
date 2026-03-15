@@ -1,3 +1,5 @@
+[English Version](ai-native-os-en.md)
+
 # AI Native OS — MerlionOS 演进路线
 
 ## 什么是 AI Native OS？

@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -285,6 +285,7 @@ pub fn dispatch(cmd: &str) {
             println!("  snake      - play Snake game!");
             println!("  forth      - Forth programming language");
             println!("  watch <n> <cmd> - repeat command every N sec");
+            println!("  matrix     - Matrix screensaver");
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
@@ -1426,17 +1427,16 @@ pub fn dispatch(cmd: &str) {
             if url.is_empty() {
                 println!("usage: wget <url>");
             } else {
-                match http::parse_url(url) {
-                    Some((host, port, path)) => {
-                        let req_bytes = http::build_request("GET", &host, &path);
-                        if let Ok(s) = core::str::from_utf8(&req_bytes) {
-                            println!("{}", s);
-                        }
-                        println!("HTTP request built for {}:{}{} (sending requires TCP)", host, port, path);
-                    }
-                    None => println!("invalid URL: {}", url),
+                match wget::fetch(url) {
+                    Ok(response) => print!("{}", response),
+                    Err(e) => println!("wget: {}", e),
                 }
             }
+        }
+        "matrix" => {
+            screensaver::run();
+            crate::vga::print_banner();
+            println!("Type 'help' for commands.");
         }
         "ifup" => {
             let pkt = dhcp::discover();
