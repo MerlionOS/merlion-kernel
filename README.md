@@ -22,9 +22,9 @@ make build
 make run
 ```
 
-This opens a QEMU window with the VGA console. Serial log output is printed to your terminal. Type commands in the QEMU window.
+Opens a QEMU window with the VGA console. Serial log output goes to your terminal. Type commands in the QEMU window.
 
-To run headless (serial only, no GUI window):
+Headless (serial only):
 
 ```sh
 make run-serial
@@ -32,13 +32,16 @@ make run-serial
 
 ## Shell Commands
 
-| Command | Description |
-|---------|-------------|
-| `help`  | List available commands |
-| `info`  | Show system information |
-| `clear` | Clear the screen |
-| `heap`  | Show heap allocator statistics |
-| `panic` | Trigger a test kernel panic |
+| Command  | Description |
+|----------|-------------|
+| `help`   | List available commands |
+| `info`   | System information |
+| `uptime` | Time since boot |
+| `heap`   | Heap allocator statistics |
+| `dmesg`  | Kernel log ring buffer |
+| `clear`  | Clear screen |
+| `umode`  | Test user-mode (ring 3) transition |
+| `panic`  | Trigger a test kernel panic |
 
 ## Project Structure
 
@@ -52,27 +55,32 @@ merlion-kernel/
 │   ├── main.rs              # Kernel entry point and panic handler
 │   ├── vga.rs               # VGA text console with scrolling and cursor
 │   ├── serial.rs            # UART serial port driver (COM1)
-│   ├── gdt.rs               # Global Descriptor Table + TSS
-│   ├── interrupts.rs        # IDT, exception and interrupt handlers
+│   ├── gdt.rs               # GDT with kernel + user segments, TSS
+│   ├── interrupts.rs        # IDT: exceptions, hardware IRQs, syscall
 │   ├── keyboard.rs          # PS/2 scancode set 1 decoder
 │   ├── memory.rs            # Page table access + frame allocator
 │   ├── allocator.rs         # Kernel heap allocator
+│   ├── timer.rs             # PIT tick counter and uptime tracking
+│   ├── log.rs               # Kernel log ring buffer (dmesg)
+│   ├── usermode.rs          # Ring 3 transition via iretq + int 0x80
 │   └── shell.rs             # Interactive kernel shell
 └── README.md
 ```
 
-## Current Status (Phase 4)
+## Current Status (Phase 5)
 
-- VGA text console with scrolling, cursor, `println!` macro
-- Interactive shell with command dispatch
-- O(1) physical frame allocator
-- PS/2 keyboard input routed to shell
-- Heap statistics reporting
-- Boot log visible on both VGA and serial
+- PIT timer at 100 Hz with uptime tracking
+- Kernel log ring buffer (4K) with `dmesg` command
+- Page fault handler with diagnostic output
+- GDT user-mode segments (ring 3 code/data)
+- TSS kernel stack for privilege transitions
+- Syscall handler (int 0x80) callable from ring 3
+- User-mode proof-of-concept via iretq
 
-## Next Milestone (Phase 5)
+## Next Milestone (Phase 6)
 
-- Uptime tracking via PIT tick counter
-- Kernel log ring buffer (in-memory `dmesg`)
-- Page fault handler
-- User-mode groundwork (ring 3 transition)
+- Process abstraction (PCB, PID)
+- Per-process page tables
+- ELF binary loader (minimal)
+- Context switching between kernel tasks
+- Syscall interface expansion (write, exit)

@@ -1,13 +1,11 @@
-/// Simple kernel shell.
+/// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
-/// Commands: help, info, clear, heap, panic
 
-use crate::{print, println, serial_println, allocator};
+use crate::{print, println, serial_println, allocator, timer};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
 
-/// Static input buffer, written to by the keyboard interrupt handler.
 static INPUT: Mutex<InputBuffer> = Mutex::new(InputBuffer::new());
 
 struct InputBuffer {
@@ -21,7 +19,6 @@ impl InputBuffer {
     }
 }
 
-/// Print the shell prompt.
 pub fn prompt() {
     print!("merlion> ");
 }
@@ -33,7 +30,6 @@ pub fn handle_key(ch: char) {
     match ch {
         '\n' => {
             println!();
-            // Copy the input string for dispatch
             let cmd = core::str::from_utf8(&input.buf[..input.len])
                 .unwrap_or("")
                 .trim();
@@ -41,11 +37,10 @@ pub fn handle_key(ch: char) {
                 dispatch(cmd);
             }
             input.len = 0;
-            drop(input); // release lock before printing
+            drop(input);
             prompt();
         }
         '\x08' => {
-            // Backspace
             if input.len > 0 {
                 input.len -= 1;
                 print!("\x08");
@@ -69,24 +64,45 @@ fn dispatch(cmd: &str) {
     match cmd {
         "help" => {
             println!("Available commands:");
-            println!("  help   - show this message");
-            println!("  info   - system information");
-            println!("  clear  - clear screen");
-            println!("  heap   - heap allocator stats");
-            println!("  panic  - trigger a kernel panic (test)");
+            println!("  help    - show this message");
+            println!("  info    - system information");
+            println!("  uptime  - time since boot");
+            println!("  heap    - heap allocator stats");
+            println!("  dmesg   - kernel log buffer");
+            println!("  clear   - clear screen");
+            println!("  umode   - test user-mode transition");
+            println!("  panic   - trigger a kernel panic");
         }
         "info" => {
             println!("MerlionOS v0.1.0");
             println!("Architecture: x86_64");
             println!("Heap size:    {}K", allocator::HEAP_SIZE / 1024);
+            println!("PIT rate:     {} Hz", timer::PIT_FREQUENCY_HZ);
         }
-        "clear" => {
-            crate::vga::WRITER.lock().clear();
+        "uptime" => {
+            let (h, m, s) = timer::uptime_hms();
+            let ticks = timer::ticks();
+            println!("Uptime: {:02}:{:02}:{:02} ({} ticks)", h, m, s, ticks);
         }
         "heap" => {
             let stats = allocator::stats();
             println!("Heap: {} used / {} free / {} total bytes",
                 stats.used, stats.free, stats.total);
+        }
+        "dmesg" => {
+            crate::log::KLOG.lock().read(|chunk| {
+                if let Ok(s) = core::str::from_utf8(chunk) {
+                    print!("{}", s);
+                }
+            });
+        }
+        "clear" => {
+            crate::vga::WRITER.lock().clear();
+        }
+        "umode" => {
+            println!("Entering user-mode (ring 3)...");
+            crate::usermode::enter_usermode();
+            println!("Returned from user-mode to kernel (ring 0).");
         }
         "panic" => {
             panic!("user-triggered panic via shell");

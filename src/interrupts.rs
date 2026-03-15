@@ -1,17 +1,19 @@
 /// Interrupt Descriptor Table setup and handlers.
-/// Handles CPU exceptions (breakpoint, double fault) and hardware
-/// interrupts (PIT timer via the 8259 PIC).
+/// Handles CPU exceptions (breakpoint, double fault, page fault) and
+/// hardware interrupts (PIT timer, PS/2 keyboard).
 
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
 use spin::Lazy;
 use crate::gdt;
-use crate::serial_println;
+use crate::{serial_println, klog_println};
 
 /// PIC interrupt offset — hardware IRQs start at interrupt 32.
 const PIC_OFFSET_PRIMARY: u8 = 32;
 const PIC_OFFSET_SECONDARY: u8 = PIC_OFFSET_PRIMARY + 8;
 
-/// Hardware interrupt numbers (offset from PIC_OFFSET_PRIMARY).
+/// Syscall interrupt vector.
+const SYSCALL_VECTOR: u8 = 0x80;
+
 #[derive(Clone, Copy)]
 #[repr(u8)]
 enum HardwareInterrupt {
@@ -29,6 +31,7 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
 
     // CPU exceptions
     idt.breakpoint.set_handler_fn(breakpoint_handler);
+    idt.page_fault.set_handler_fn(page_fault_handler);
     unsafe {
         idt.double_fault
             .set_handler_fn(double_fault_handler)
@@ -39,6 +42,10 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
     idt[HardwareInterrupt::Timer as u8 as usize].set_handler_fn(timer_handler);
     idt[HardwareInterrupt::Keyboard as u8 as usize].set_handler_fn(keyboard_handler);
 
+    // Syscall (int 0x80) — callable from ring 3
+    let syscall_entry = idt[SYSCALL_VECTOR as usize].set_handler_fn(syscall_handler);
+    syscall_entry.set_privilege_level(x86_64::PrivilegeLevel::Ring3);
+
     idt
 });
 
@@ -46,7 +53,6 @@ static IDT: Lazy<InterruptDescriptorTable> = Lazy::new(|| {
 pub fn init() {
     IDT.load();
     unsafe { PICS.lock().initialize() };
-    // Enable hardware interrupts
     x86_64::instructions::interrupts::enable();
 }
 
@@ -54,6 +60,23 @@ pub fn init() {
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     serial_println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+    klog_println!("EXCEPTION: BREAKPOINT at {:#x}", stack_frame.instruction_pointer.as_u64());
+}
+
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: PageFaultErrorCode,
+) {
+    use x86_64::registers::control::Cr2;
+    let fault_addr = Cr2::read();
+
+    serial_println!("EXCEPTION: PAGE FAULT");
+    serial_println!("  Accessed address: {:?}", fault_addr);
+    serial_println!("  Error code: {:?}", error_code);
+    serial_println!("{:#?}", stack_frame);
+    klog_println!("PAGE FAULT at {:?}, error: {:?}", fault_addr, error_code);
+
+    panic!("page fault at {:?}", fault_addr);
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -67,6 +90,8 @@ extern "x86-interrupt" fn double_fault_handler(
 // --- Hardware interrupt handlers ---
 
 extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
+    crate::timer::tick();
+
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(HardwareInterrupt::Timer as u8);
@@ -87,4 +112,12 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
         PICS.lock()
             .notify_end_of_interrupt(HardwareInterrupt::Keyboard as u8);
     }
+}
+
+// --- Syscall handler ---
+
+extern "x86-interrupt" fn syscall_handler(_stack_frame: InterruptStackFrame) {
+    // Minimal syscall: just log that user-mode called us
+    serial_println!("[syscall] int 0x80 from user-mode");
+    klog_println!("[syscall] int 0x80 received");
 }
