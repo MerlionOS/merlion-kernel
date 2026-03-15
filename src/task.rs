@@ -113,6 +113,25 @@ pub fn list() -> alloc::vec::Vec<TaskInfo> {
     result
 }
 
+/// Kill a task by PID. Cannot kill the kernel task (pid 0).
+pub fn kill(target_pid: usize) -> Result<(), &'static str> {
+    if target_pid == 0 {
+        return Err("cannot kill kernel task");
+    }
+    let mut tasks = TASKS.lock();
+    for slot in tasks.iter_mut() {
+        if let TaskSlot::Occupied { pid, state, name, .. } = slot {
+            if *pid == target_pid && *state != TaskState::Finished {
+                klog_println!("[task] killed '{}' (pid {})", name, pid);
+                serial_println!("[task] killed '{}' (pid {})", name, pid);
+                *state = TaskState::Finished;
+                return Ok(());
+            }
+        }
+    }
+    Err("task not found")
+}
+
 /// Yield the current task's time slice. Switches to the next ready task.
 pub fn yield_now() {
     x86_64::instructions::interrupts::without_interrupts(|| {

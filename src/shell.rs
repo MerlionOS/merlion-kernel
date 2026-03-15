@@ -1,7 +1,7 @@
 /// Interactive kernel shell.
 /// Processes keyboard input and dispatches commands.
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs};
 use spin::Mutex;
 
 const MAX_INPUT: usize = 80;
@@ -62,21 +62,27 @@ fn dispatch(cmd: &str) {
 
     match cmd {
         "help" => {
-            println!("Available commands:");
-            println!("  help     - show this message");
-            println!("  info     - system information");
-            println!("  uptime   - time since boot");
-            println!("  heap     - heap allocator stats");
-            println!("  ps       - list running tasks");
-            println!("  spawn    - spawn a demo kernel task");
-            println!("  run <p>  - run user program (blocking)");
-            println!("  bg <p>   - run user program (background)");
-            println!("  progs    - list user programs");
-            println!("  pipe     - IPC demo (producer/consumer)");
-            println!("  channels - list IPC channels");
-            println!("  dmesg    - kernel log buffer");
-            println!("  clear    - clear screen");
-            println!("  panic    - trigger a kernel panic");
+            println!("Process commands:");
+            println!("  ps         - list tasks");
+            println!("  spawn      - spawn demo task");
+            println!("  kill <pid> - kill a task");
+            println!("  bg <prog>  - run user program (background)");
+            println!("  run <prog> - run user program (blocking)");
+            println!("  progs      - list user programs");
+            println!("File commands:");
+            println!("  ls [path]  - list directory");
+            println!("  cat <path> - read file");
+            println!("  write <path> <data> - write to file");
+            println!("  rm <path>  - remove file");
+            println!("System commands:");
+            println!("  info       - system information");
+            println!("  uptime     - time since boot");
+            println!("  heap       - heap stats");
+            println!("  pipe       - IPC demo");
+            println!("  channels   - list IPC channels");
+            println!("  dmesg      - kernel log");
+            println!("  clear      - clear screen");
+            println!("  panic      - trigger panic");
         }
         "info" => {
             println!("MerlionOS v0.1.0");
@@ -84,11 +90,11 @@ fn dispatch(cmd: &str) {
             println!("Heap size:    {}K", allocator::HEAP_SIZE / 1024);
             println!("PIT rate:     {} Hz", timer::PIT_FREQUENCY_HZ);
             println!("Max tasks:    8");
+            println!("VFS inodes:   64 max");
         }
         "uptime" => {
             let (h, m, s) = timer::uptime_hms();
-            let ticks = timer::ticks();
-            println!("Uptime: {:02}:{:02}:{:02} ({} ticks)", h, m, s, ticks);
+            println!("Uptime: {:02}:{:02}:{:02} ({} ticks)", h, m, s, timer::ticks());
         }
         "heap" => {
             let stats = allocator::stats();
@@ -98,12 +104,22 @@ fn dispatch(cmd: &str) {
         "ps" => {
             println!("  PID  STATE    NAME");
             for t in task::list() {
-                let state_str = match t.state {
+                let st = match t.state {
                     task::TaskState::Running  => "running ",
                     task::TaskState::Ready    => "ready   ",
                     task::TaskState::Finished => "finished",
                 };
-                println!("  {:3}  {}  {}", t.pid, state_str, t.name);
+                println!("  {:3}  {}  {}", t.pid, st, t.name);
+            }
+        }
+        cmd if cmd.starts_with("kill ") => {
+            if let Ok(pid) = cmd[5..].trim().parse::<usize>() {
+                match task::kill(pid) {
+                    Ok(()) => println!("Killed pid {}", pid),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: kill <pid>");
             }
         }
         "spawn" => {
@@ -120,25 +136,55 @@ fn dispatch(cmd: &str) {
             }
         }
         cmd if cmd.starts_with("run ") => {
-            let prog_name = cmd[4..].trim();
-            match process::run_user_program(prog_name) {
-                Ok(()) => println!("Program '{}' finished.", prog_name),
+            let name = cmd[4..].trim();
+            match process::run_user_program(name) {
+                Ok(()) => println!("Program '{}' finished.", name),
                 Err(e) => println!("Error: {}", e),
             }
         }
-        "run" => {
-            println!("Usage: run <program>  or  bg <program>");
-        }
+        "run" => println!("Usage: run <program>"),
         cmd if cmd.starts_with("bg ") => {
-            let prog_name = cmd[3..].trim();
-            match process::spawn_user_program(prog_name) {
-                Ok(pid) => println!("Background: '{}' (pid {})", prog_name, pid),
+            let name = cmd[3..].trim();
+            match process::spawn_user_program(name) {
+                Ok(pid) => println!("Background: '{}' (pid {})", name, pid),
                 Err(e) => println!("Error: {}", e),
             }
         }
-        "pipe" => {
-            run_ipc_demo();
+
+        // --- File commands ---
+        "ls" => do_ls("/"),
+        cmd if cmd.starts_with("ls ") => do_ls(cmd[3..].trim()),
+
+        cmd if cmd.starts_with("cat ") => {
+            let path = cmd[4..].trim();
+            match vfs::cat(path) {
+                Ok(content) => print!("{}", content),
+                Err(e) => println!("cat: {}: {}", path, e),
+            }
         }
+
+        cmd if cmd.starts_with("write ") => {
+            let rest = cmd[6..].trim();
+            if let Some((path, data)) = rest.split_once(' ') {
+                match vfs::write(path, data) {
+                    Ok(()) => println!("Written {} bytes to {}", data.len(), path),
+                    Err(e) => println!("write: {}", e),
+                }
+            } else {
+                println!("Usage: write <path> <data>");
+            }
+        }
+
+        cmd if cmd.starts_with("rm ") => {
+            let path = cmd[3..].trim();
+            match vfs::rm(path) {
+                Ok(()) => println!("Removed {}", path),
+                Err(e) => println!("rm: {}: {}", path, e),
+            }
+        }
+
+        // --- Other ---
+        "pipe" => run_ipc_demo(),
         "channels" => {
             let chs = ipc::list();
             if chs.is_empty() {
@@ -157,20 +203,26 @@ fn dispatch(cmd: &str) {
                 }
             });
         }
-        "clear" => {
-            crate::vga::WRITER.lock().clear();
-        }
-        "panic" => {
-            panic!("user-triggered panic via shell");
-        }
+        "clear" => crate::vga::WRITER.lock().clear(),
+        "panic" => panic!("user-triggered panic via shell"),
         _ => {
             println!("unknown command: {}", cmd);
-            println!("type 'help' for available commands");
+            println!("type 'help' for commands");
         }
     }
 }
 
-/// Demo task: prints messages, yields between each, then exits.
+fn do_ls(path: &str) {
+    match vfs::ls(path) {
+        Ok(entries) => {
+            for (name, type_char) in entries {
+                println!("  {} {}", type_char, name);
+            }
+        }
+        Err(e) => println!("ls: {}: {}", path, e),
+    }
+}
+
 fn demo_task() {
     for i in 1..=5 {
         serial_println!("[demo] iteration {}/5", i);
@@ -181,19 +233,13 @@ fn demo_task() {
     println!("[demo] task complete");
 }
 
-/// IPC demo: spawn a producer and consumer task communicating via a channel.
 fn run_ipc_demo() {
     let ch_id = match ipc::create() {
         Some(id) => id,
         None => { println!("Failed to create channel"); return; }
     };
-
     println!("IPC demo: channel {} created", ch_id);
-    serial_println!("[ipc] channel {} created for demo", ch_id);
-
-    // Store channel ID in a static so tasks can access it
     DEMO_CHANNEL.store(ch_id, core::sync::atomic::Ordering::SeqCst);
-
     task::spawn("producer", producer_task);
     task::spawn("consumer", consumer_task);
     println!("Spawned producer and consumer tasks.");
@@ -204,47 +250,30 @@ static DEMO_CHANNEL: core::sync::atomic::AtomicUsize =
 
 fn producer_task() {
     let ch = DEMO_CHANNEL.load(core::sync::atomic::Ordering::SeqCst);
-    let messages = ["hello", "from", "producer"];
-    for msg in messages {
+    for msg in ["hello", "from", "producer"] {
         ipc::send_str(ch, msg);
         ipc::send(ch, b'\n');
-        serial_println!("[producer] sent: {}", msg);
         println!("[producer] sent: {}", msg);
         task::yield_now();
     }
-    // Send EOF marker
     ipc::send(ch, 0);
-    serial_println!("[producer] done");
     println!("[producer] done");
 }
 
 fn consumer_task() {
     let ch = DEMO_CHANNEL.load(core::sync::atomic::Ordering::SeqCst);
-    // Give producer a head start
     task::yield_now();
-
     loop {
         let data = ipc::recv_all(ch);
-        if data.is_empty() {
-            task::yield_now();
-            continue;
-        }
-        // Check for EOF (null byte)
+        if data.is_empty() { task::yield_now(); continue; }
         if data.contains('\0') {
             let clean: alloc::string::String = data.chars().filter(|&c| c != '\0').collect();
-            if !clean.is_empty() {
-                serial_println!("[consumer] received: {}", clean.trim());
-                println!("[consumer] received: {}", clean.trim());
-            }
+            if !clean.is_empty() { println!("[consumer] received: {}", clean.trim()); }
             break;
         }
-        serial_println!("[consumer] received: {}", data.trim());
         println!("[consumer] received: {}", data.trim());
         task::yield_now();
     }
-
-    // Cleanup
     ipc::destroy(ch);
-    serial_println!("[consumer] channel closed, done");
     println!("[consumer] done, channel closed");
 }

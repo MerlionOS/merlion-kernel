@@ -17,6 +17,7 @@ mod shell;
 mod syscall;
 mod task;
 mod timer;
+mod vfs;
 mod vga;
 
 use core::panic::PanicInfo;
@@ -59,6 +60,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     task::init();
     println!("[ok] Task system ready");
     serial_println!("[ok] Task system initialized");
+
+    vfs::init();
+    println!("[ok] VFS mounted");
+    serial_println!("[ok] VFS initialized");
 
     klog_println!("Kernel initialization complete.");
     println!();
