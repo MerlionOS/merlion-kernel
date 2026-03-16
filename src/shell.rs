@@ -430,6 +430,19 @@ pub fn dispatch(cmd: &str) {
             println!("  pkg-search <q> - search packages");
             println!("  build-stats  - build system stats");
             println!("  build-config - build configuration");
+            println!("Advanced systems:");
+            println!("  ext4-info    - ext4 filesystem info");
+            println!("  congestion   - TCP congestion control info");
+            println!("  wasi-info    - WASI runtime info");
+            println!("  veth-list    - virtual ethernet pairs");
+            println!("  bridges      - network bridges");
+            println!("  dlopen       - loaded shared libraries");
+            println!("  breakpoints  - debugger breakpoints");
+            println!("  bt-debug     - annotated backtrace");
+            println!("  crypto-info  - cryptography info");
+            println!("  aes-demo     - AES encryption demo");
+            println!("  rsa-demo     - RSA encryption demo");
+            println!("  pkg-stats    - package registry stats");
         }
         "info" => {
             let mem = memory::stats();
@@ -2222,6 +2235,38 @@ pub fn dispatch(cmd: &str) {
         }
         "build-stats" => { println!("{}", crate::build_system::build_stats()); }
         "build-config" => { println!("{}", crate::build_system::show_config()); }
+        "ext4-info" => { println!("{}", crate::ext4::ext4_info()); }
+        "congestion" => { println!("{}", crate::tcp_congestion::congestion_stats()); }
+        "wasi-info" => { println!("{}", crate::wasi::wasi_info()); }
+        "veth-list" => { for s in crate::veth::list_pairs() { println!("{}", s); } }
+        "bridges" => { for s in crate::bridge::list_bridges() { println!("{}", s); } }
+        "dlopen" => { println!("{}", crate::elf_runtime::linker_info()); }
+        "breakpoints" => { println!("{}", crate::debuginfo::list_breakpoints()); }
+        "bt-debug" => { println!("{}", crate::debuginfo::backtrace_annotated()); }
+        "crypto-info" => { println!("{}", crate::crypto_ext::crypto_info()); }
+        "aes-demo" => {
+            let key = [0x2bu8, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c];
+            let plain = [0x32u8, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34];
+            let cipher = crate::crypto_ext::aes128_encrypt_block(&plain, &key);
+            println!("AES-128 encrypt:");
+            println!("  plain:  {:02x?}", plain);
+            println!("  key:    {:02x?}", key);
+            println!("  cipher: {:02x?}", cipher);
+            let dec = crate::crypto_ext::aes128_decrypt_block(&cipher, &key);
+            println!("  decrpt: {:02x?}", dec);
+            println!("  match:  {}", plain == dec);
+        }
+        "rsa-demo" => {
+            let kp = crate::crypto_ext::generate_keypair(16);
+            println!("RSA demo (tiny keys):");
+            println!("  n={}, e={}, d={}", kp.n, kp.e, kp.d);
+            let msg = 42u64;
+            let enc = crate::crypto_ext::rsa_encrypt(msg, kp.e, kp.n);
+            let dec = crate::crypto_ext::rsa_decrypt(enc, kp.d, kp.n);
+            println!("  msg={}, encrypted={}, decrypted={}", msg, enc, dec);
+            println!("  match: {}", msg == dec);
+        }
+        "pkg-stats" => { println!("{}", crate::pkg_registry::registry_stats()); }
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {

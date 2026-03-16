@@ -105,6 +105,14 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     https_server::init();
     pkg_registry::init();
     build_system::init();
+    ext4::init();
+    tcp_congestion::init();
+    wasi::init();
+    veth::init();
+    bridge::init();
+    elf_runtime::init();
+    debuginfo::init();
+    crypto_ext::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
