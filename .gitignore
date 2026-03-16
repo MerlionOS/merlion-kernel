@@ -1,3 +1,9 @@
 /target
 Cargo.lock
 disk.img
+
+# Build artifacts
+merlionos.iso
+merlionos-uefi.img
+iso_root/
+tools/limine/
