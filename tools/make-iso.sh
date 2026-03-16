@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIMINE_DIR="$SCRIPT_DIR/limine"
 ISO_ROOT="$ROOT_DIR/iso_root"
-KERNEL_ELF="$ROOT_DIR/target/x86_64-unknown-none/release/merlion-kernel"
+KERNEL_ELF="$ROOT_DIR/target/x86_64-unknown-none/release/merlion-limine"
 ISO_OUT="$ROOT_DIR/merlionos.iso"
 
 # ── 1. Check prerequisites ──────────────────────────────────────────
@@ -51,10 +51,11 @@ fi
 
 ok "Limine is ready."
 
-# ── 3. Build the kernel ─────────────────────────────────────────────
-info "Building MerlionOS kernel (x86_64, release)..."
-cargo build --manifest-path "$ROOT_DIR/Cargo.toml" \
-    --target x86_64-unknown-none --release
+# ── 3. Build the kernel (Limine binary) ────────────────────────────
+info "Building MerlionOS kernel for Limine (x86_64, release)..."
+RUSTFLAGS="-C link-arg=-T${ROOT_DIR}/linker-limine.ld -C relocation-model=static" \
+  cargo build --manifest-path "$ROOT_DIR/Cargo.toml" \
+    --bin merlion-limine --target x86_64-unknown-none --release
 
 [ -f "$KERNEL_ELF" ] || die "Kernel ELF not found at $KERNEL_ELF"
 ok "Kernel built successfully."

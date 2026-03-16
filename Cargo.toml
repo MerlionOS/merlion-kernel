@@ -18,6 +18,14 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
+[[bin]]
+name = "merlion-kernel"
+path = "src/main.rs"
+
+[[bin]]
+name = "merlion-limine"
+path = "src/main_limine.rs"
+
 [package.metadata.bootimage]
 test-args = [
     "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",

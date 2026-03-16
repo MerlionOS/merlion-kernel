@@ -1,4 +1,4 @@
-.PHONY: build run run-serial run-fullscreen run-disk disk test iso run-uefi run-uefi-mac usb clean
+.PHONY: build run run-serial run-fullscreen run-disk disk test limine-kernel iso run-uefi run-uefi-mac usb clean
 
 KERNEL_BIN = target/x86_64-unknown-none/debug/bootimage-merlion-kernel.bin
 DISK_IMG = disk.img
@@ -61,13 +61,20 @@ test:
 	cargo test --test basic
 
 # -------------------------------------------------------
-# UEFI / Real Hardware
+# UEFI / Real Hardware (Limine boot)
 # -------------------------------------------------------
 
+LIMINE_ELF = target/x86_64-unknown-none/release/merlion-limine
 ISO_FILE = merlionos.iso
 
+# Build kernel ELF for Limine boot (separate binary with _start entry point)
+limine-kernel:
+	RUSTFLAGS="-C link-arg=-T$(CURDIR)/linker-limine.ld -C relocation-model=static" \
+	cargo build --bin merlion-limine --target x86_64-unknown-none --release
+	@echo "Kernel ELF: $(LIMINE_ELF)"
+
 # Build a bootable ISO image using the helper script
-iso: build
+iso: limine-kernel
 	tools/make-iso.sh
 
 # Boot the ISO in QEMU with UEFI firmware (Linux — OVMF from distro package)
