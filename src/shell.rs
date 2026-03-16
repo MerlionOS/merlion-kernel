@@ -476,6 +476,26 @@ pub fn dispatch(cmd: &str) {
             println!("  boot-report  - boot timing");
             println!("  install      - system installer");
             println!("  disks        - list block devices");
+            println!("Configuration & diagnostics:");
+            println!("  sysctl <path> - read/write kernel config");
+            println!("  sysctl-list   - list all sysctl params");
+            println!("  config-diff   - show changed config params");
+            println!("  config-dump   - dump full config");
+            println!("  profile <p>   - apply config profile");
+            println!("  traceroute <ip> - trace network path");
+            println!("  portscan <ip> <start> <end> - scan ports");
+            println!("  dns <name>    - DNS lookup");
+            println!("  capture       - packet capture status");
+            println!("  net-health    - network health check");
+            println!("  vmm-info      - virtual memory info");
+            println!("  page-cache    - page cache statistics");
+            println!("  oom-info      - OOM killer info");
+            println!("  ipc-info      - extended IPC info");
+            println!("  mq-list       - message queues");
+            println!("  sem-list      - semaphores");
+            println!("  perf-events   - performance events info");
+            println!("  flamegraph    - generate flame graph");
+            println!("  topdown       - top-down perf analysis");
         }
         "info" => {
             let mem = memory::stats();
@@ -569,30 +589,58 @@ pub fn dispatch(cmd: &str) {
         }
 
         // --- File commands ---
-        "ls -l" => {
-            match crate::vfs::ls_long("/") {
-                Ok(entries) => {
-                    for entry in entries {
-                        println!("  {}", entry);
+        cmd if cmd == "ls" || cmd.starts_with("ls ") => {
+            let args = if cmd.len() > 2 { cmd[2..].trim() } else { "" };
+            // Parse flags and path
+            let mut show_all = false;
+            let mut long_fmt = false;
+            let mut _human_readable = false;
+            let mut path = "/";
+
+            for part in args.split_whitespace() {
+                if part.starts_with('-') {
+                    for ch in part[1..].chars() {
+                        match ch {
+                            'a' => show_all = true,
+                            'l' => long_fmt = true,
+                            'h' => _human_readable = true,
+                            'H' => {} // follow symlinks (no-op)
+                            'R' => {} // recursive (no-op)
+                            _ => {}
+                        }
                     }
+                } else {
+                    path = part;
                 }
-                Err(e) => println!("ls: {}", e),
+            }
+
+            if long_fmt {
+                match crate::vfs::ls_long(path) {
+                    Ok(entries) => {
+                        for entry in entries {
+                            if !show_all && entry.contains("/.") { continue; }
+                            println!("  {}", entry);
+                        }
+                    }
+                    Err(e) => println!("ls: {}", e),
+                }
+            } else {
+                match crate::vfs::ls(path) {
+                    Ok(entries) => {
+                        for (name, type_char) in &entries {
+                            if !show_all && name.starts_with('.') { continue; }
+                            let prefix = match type_char {
+                                'd' => "\x1b[34m",
+                                'c' => "\x1b[33m",
+                                _ => "",
+                            };
+                            println!("  {}{}\x1b[0m  {}", prefix, type_char, name);
+                        }
+                    }
+                    Err(e) => println!("ls: {}", e),
+                }
             }
         }
-        cmd if cmd.starts_with("ls -l ") => {
-            let path = cmd[6..].trim();
-            let path = if path.is_empty() { "/" } else { path };
-            match crate::vfs::ls_long(path) {
-                Ok(entries) => {
-                    for entry in entries {
-                        println!("  {}", entry);
-                    }
-                }
-                Err(e) => println!("ls: {}", e),
-            }
-        }
-        "ls" => do_ls("/"),
-        cmd if cmd.starts_with("ls ") => do_ls(cmd[3..].trim()),
 
         cmd if cmd.starts_with("cat ") => {
             let path = cmd[4..].trim();
@@ -696,6 +744,23 @@ pub fn dispatch(cmd: &str) {
             // Restore shell display
             crate::vga::print_banner();
             println!("Editor closed.");
+        }
+        cmd if cmd.starts_with("vim ") => {
+            let path = cmd[4..].trim();
+            crate::vim::start(Some(path));
+            while crate::vim::is_active() {
+                x86_64::instructions::hlt();
+            }
+            crate::vga::print_banner();
+            println!("Vim closed.");
+        }
+        "vim" => {
+            crate::vim::start(None);
+            while crate::vim::is_active() {
+                x86_64::instructions::hlt();
+            }
+            crate::vga::print_banner();
+            println!("Vim closed.");
         }
         cmd if cmd.starts_with("wc ") => {
             let path = cmd[3..].trim();
@@ -2448,6 +2513,67 @@ pub fn dispatch(cmd: &str) {
                 Err(e) => println!("run-elf: {}", e),
             }
         }
+        // --- v71-v75: Configuration, diagnostics, perf events ---
+        cmd if cmd.starts_with("sysctl ") => {
+            let path = cmd.strip_prefix("sysctl ").unwrap().trim();
+            if let Some((key, val)) = path.split_once('=') {
+                match crate::kconfig_ext::sysctl_write(key.trim(), val.trim()) {
+                    Ok(()) => println!("{} = {}", key.trim(), val.trim()),
+                    Err(e) => println!("sysctl: {}", e),
+                }
+            } else {
+                match crate::kconfig_ext::sysctl_read(path) {
+                    Ok(val) => println!("{} = {}", path, val),
+                    Err(e) => println!("sysctl: {} — {}", path, e),
+                }
+            }
+        }
+        "sysctl-list" => { println!("{}", crate::kconfig_ext::dump_config()); }
+        "config-diff" => { println!("{:?}", crate::kconfig_ext::config_diff()); }
+        "config-dump" => { println!("{}", crate::kconfig_ext::dump_config()); }
+        cmd if cmd.starts_with("profile ") => {
+            let name = cmd.strip_prefix("profile ").unwrap().trim();
+            match crate::kconfig_ext::apply_profile(name) {
+                Ok(_) => println!("Applied profile: {}", name),
+                Err(e) => println!("profile: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("traceroute ") => {
+            let ip = cmd.strip_prefix("traceroute ").unwrap().trim();
+            println!("{}", crate::netdiag::traceroute_cmd(ip));
+        }
+        cmd if cmd.starts_with("portscan ") => {
+            let args = cmd.strip_prefix("portscan ").unwrap().trim();
+            println!("{}", crate::netdiag::port_scan_cmd(args));
+        }
+        cmd if cmd.starts_with("dns ") => {
+            let name = cmd.strip_prefix("dns ").unwrap().trim();
+            println!("{}", crate::netdiag::dns_lookup_cmd(name));
+        }
+        "capture" => { println!("{}", crate::netdiag::capture_status()); }
+        "net-health" => { println!("{}", crate::netdiag::health_check_cmd()); }
+        cmd if cmd == "ss" || cmd.starts_with("ss ") => {
+            let flags = if cmd.len() > 2 { cmd[2..].trim() } else { "" };
+            println!("{}", crate::netdiag::ss_command(flags));
+        }
+        cmd if cmd.starts_with("nc ") => {
+            let args = cmd.strip_prefix("nc ").unwrap().trim();
+            println!("{}", crate::netdiag::nc_command(args));
+        }
+        cmd if cmd == "ip" || cmd.starts_with("ip ") => {
+            let args = if cmd.len() > 2 { cmd[2..].trim() } else { "help" };
+            println!("{}", crate::netdiag::ip_command(args));
+        }
+        "vmm-info" => { println!("{}", crate::vmm::vmm_info()); }
+        "page-cache" => { println!("{:?}", crate::vmm::page_cache_stats()); }
+        "oom-info" => { println!("{}", crate::vmm::oom_info()); }
+        "ipc-info" => { println!("{}", crate::ipc_ext::ipc_ext_info()); }
+        "mq-list" => { println!("{}", crate::ipc_ext::mq_list_info()); }
+        "sem-list" => { println!("{}", crate::ipc_ext::sem_list_info()); }
+        "perf-events" => { println!("{}", crate::perf_events::perf_events_info()); }
+        "flamegraph" => { println!("{}", crate::perf_events::generate_flamegraph()); }
+        "topdown" => { println!("{}", crate::perf_events::topdown_analysis()); }
+
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {
