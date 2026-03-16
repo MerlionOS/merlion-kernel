@@ -368,6 +368,20 @@ pub fn dispatch(cmd: &str) {
             println!("  ws-conns     - WebSocket connections");
             println!("  ws-rooms     - WebSocket rooms");
             println!("  ws-stats     - WebSocket statistics");
+            println!("AI platform:");
+            println!("  nn-models    - list neural network models");
+            println!("  nn-infer <m> <inputs> - run inference");
+            println!("  nn-demo      - neural network demo");
+            println!("  ml-demo      - ML training demo");
+            println!("  ml-stats     - ML statistics");
+            println!("  vsearch <q>  - vector semantic search");
+            println!("  vstore       - vector store info");
+            println!("  workflow      - list workflows");
+            println!("  workflow-demo - run demo workflow");
+            println!("  evolve       - AI self-analysis");
+            println!("  findings     - code analysis findings");
+            println!("  patches      - generated patches");
+            println!("  evolve-stats - evolution statistics");
         }
         "info" => {
             let mem = memory::stats();
@@ -2046,6 +2060,41 @@ pub fn dispatch(cmd: &str) {
         }
         "ws-stats" => {
             println!("{}", crate::ws_server::ws_stats());
+        }
+        "nn-models" => { println!("{}", crate::nn_inference::list_models()); }
+        "nn-demo" => { println!("{}", crate::nn_inference::demo_inference()); }
+        "ml-demo" => {
+            println!("{}", crate::ml_train::demo_linear());
+            println!("{}", crate::ml_train::demo_classify());
+        }
+        "ml-stats" => { println!("{}", crate::ml_train::ml_stats()); }
+        "vstore" => { println!("{}", crate::vector_store::store_stats()); println!("{}", crate::vector_store::list_documents()); }
+        "workflow" => { println!("{}", crate::ai_workflow::list_workflows()); }
+        "workflow-demo" => { println!("{}", crate::ai_workflow::demo()); }
+        "evolve" => { println!("{}", crate::self_evolve::analyze_all()); }
+        "findings" => { println!("{}", crate::self_evolve::list_findings()); }
+        "patches" => { println!("{}", crate::self_evolve::list_patches()); }
+        "evolve-stats" => { println!("{}", crate::self_evolve::evolve_stats()); }
+        cmd if cmd.starts_with("vsearch ") => {
+            let query = cmd.strip_prefix("vsearch ").unwrap().trim();
+            let results = crate::vector_store::search(query, 5);
+            println!("{}", crate::vector_store::format_results(&results));
+        }
+        cmd if cmd.starts_with("nn-infer ") => {
+            let args = cmd.strip_prefix("nn-infer ").unwrap().trim();
+            let parts: alloc::vec::Vec<&str> = args.splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                let model = parts[0];
+                let inputs: alloc::vec::Vec<i32> = parts[1].split(',')
+                    .filter_map(|s| s.trim().parse::<i32>().ok())
+                    .collect();
+                match crate::nn_inference::run_inference(model, &inputs) {
+                    Ok(output) => println!("Output: {:?}", output),
+                    Err(e) => println!("nn-infer: {}", e),
+                }
+            } else {
+                println!("Usage: nn-infer <model> <input1,input2,...>");
+            }
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

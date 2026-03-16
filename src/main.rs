@@ -86,6 +86,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     dns_zone::init();
     mqtt_broker::init();
     ws_server::init();
+    nn_inference::init();
+    vector_store::init();
+    ai_workflow::init();
+    self_evolve::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
