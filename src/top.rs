@@ -103,7 +103,7 @@ fn draw() {
             task::TaskState::Ready    => "ready   ",
             task::TaskState::Finished => "\x1b[90mfinished\x1b[0m",
         };
-        let line = alloc::format!("   {:3}  {}  {}", t.pid, state, t.name);
+        let _line = alloc::format!("   {:3}  {}  {}", t.pid, state, t.name);
         // Use raw write to handle state color
         let state_str = match t.state {
             task::TaskState::Running  => "running ",

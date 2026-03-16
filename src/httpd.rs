@@ -721,7 +721,6 @@ fn register_server_socket(
     // We push directly into the tcp_real SOCKETS table.
     // This requires the SOCKETS static to be accessible — we re-use the
     // public connect/send/close API after manually inserting.
-    use crate::tcp_real::{TcpSocket, TcpState};
 
     // Access the global socket table through a small shim.
     // Since SOCKETS is private in tcp_real, we use an alternate approach:

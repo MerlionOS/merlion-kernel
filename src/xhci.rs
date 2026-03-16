@@ -284,7 +284,7 @@ pub fn init() {
         // Set up Command Ring
         STATE.cmd_ring = [Trb::zero(); CMD_RING_SIZE];
         STATE.cmd_enqueue = 0; STATE.cmd_cycle = true;
-        let cmd_ring_phys = virt_to_phys(&STATE.cmd_ring as *const _ as usize);
+        let cmd_ring_phys = virt_to_phys(&raw const STATE.cmd_ring as *const _ as usize);
         let crcr_val = cmd_ring_phys | CRCR_RCS;
         ptr::write_volatile(&mut (*op).crcr_lo, crcr_val as u32);
         ptr::write_volatile(&mut (*op).crcr_hi, (crcr_val >> 32) as u32);
@@ -292,12 +292,12 @@ pub fn init() {
         // Set up Event Ring (single segment)
         STATE.event_ring = [Trb::zero(); EVENT_RING_SIZE];
         STATE.event_dequeue = 0; STATE.event_cycle = true;
-        let event_ring_phys = virt_to_phys(&STATE.event_ring as *const _ as usize);
+        let event_ring_phys = virt_to_phys(&raw const STATE.event_ring as *const _ as usize);
         STATE.erst = ErstEntry {
             base_lo: event_ring_phys as u32, base_hi: (event_ring_phys >> 32) as u32,
             size: EVENT_RING_SIZE as u32, _reserved: 0,
         };
-        let erst_phys = virt_to_phys(&STATE.erst as *const _ as usize);
+        let erst_phys = virt_to_phys(&raw const STATE.erst as *const _ as usize);
         ptr::write_volatile(&mut (*runtime).erstsz, 1);
         ptr::write_volatile(&mut (*runtime).erdp_lo, event_ring_phys as u32);
         ptr::write_volatile(&mut (*runtime).erdp_hi, (event_ring_phys >> 32) as u32);
@@ -374,7 +374,7 @@ unsafe fn post_command(trb_type: u32) {
     STATE.cmd_enqueue += 1;
     if STATE.cmd_enqueue >= CMD_RING_SIZE - 1 {
         // Link TRB wraps back to ring start; toggle cycle (bit 1)
-        let link_phys = virt_to_phys(&STATE.cmd_ring as *const _ as usize);
+        let link_phys = virt_to_phys(&raw const STATE.cmd_ring as *const _ as usize);
         STATE.cmd_ring[CMD_RING_SIZE - 1].param_lo = link_phys as u32;
         STATE.cmd_ring[CMD_RING_SIZE - 1].param_hi = (link_phys >> 32) as u32;
         STATE.cmd_ring[CMD_RING_SIZE - 1].status = 0;
@@ -426,13 +426,15 @@ pub fn info() -> String {
                 format!("port{}={}", port, speed_name(spd))
             })
             .collect();
+        let max_ports = core::ptr::read_volatile(&raw const STATE.max_ports);
+        let connected_count = core::ptr::read_volatile(&raw const STATE.connected_count);
         if ports.is_empty() {
             format!("xhci: v{}.{:#04x}, {} ports, no devices",
-                ver >> 8, ver & 0xFF, STATE.max_ports)
+                ver >> 8, ver & 0xFF, max_ports)
         } else {
             format!("xhci: v{}.{:#04x}, {} ports, {} connected [{}]",
-                ver >> 8, ver & 0xFF, STATE.max_ports,
-                STATE.connected_count, ports.join(", "))
+                ver >> 8, ver & 0xFF, max_ports,
+                connected_count, ports.join(", "))
         }
     }
 }

@@ -123,7 +123,7 @@ impl ServiceManager {
         let svc_name: &str = &self.services[idx].name;
         match self.services[idx].svc_type {
             ServiceType::Daemon => {
-                let cmd_owned = cmd.clone();
+                let _cmd_owned = cmd.clone();
                 let task_name: &'static str = leak_str(svc_name);
                 if let Some(pid) = task::spawn(task_name, || {
                     crate::serial_println!("[init] daemon started");

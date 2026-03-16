@@ -1,7 +1,6 @@
 /// Signal framework for inter-task signaling.
 /// Simplified POSIX-like signals: SIGKILL, SIGTERM, SIGSTOP, SIGCONT.
 
-use core::sync::atomic::{AtomicU32, Ordering};
 use spin::Mutex;
 
 const MAX_TASKS: usize = 8;

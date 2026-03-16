@@ -100,6 +100,7 @@ fn decode_u32(data: &[u8]) -> Result<(u32, usize), WasmError> {
 fn decode_i32(data: &[u8]) -> Result<(i32, usize), WasmError> {
     let mut result: i32 = 0;
     let mut shift = 0u32;
+    #[allow(unused_assignments)]
     let mut last_byte = 0u8;
     for (i, &byte) in data.iter().enumerate() {
         last_byte = byte;
@@ -337,15 +338,18 @@ impl WasmVm {
                 }
 
                 OP_LOCAL_SET => {
-                    let frame = self.call_stack.last_mut().unwrap();
-                    let body = &module.bodies[frame.func_idx as usize];
-                    let (li, n) = decode_u32(&body.code[frame.ip..])?;
-                    frame.ip += n;
-                    if li as usize >= frame.locals_count {
-                        return Err(WasmError::LocalIndexOob(li));
-                    }
+                    let (li, locals_base) = {
+                        let frame = self.call_stack.last_mut().unwrap();
+                        let body = &module.bodies[frame.func_idx as usize];
+                        let (li, n) = decode_u32(&body.code[frame.ip..])?;
+                        frame.ip += n;
+                        if li as usize >= frame.locals_count {
+                            return Err(WasmError::LocalIndexOob(li));
+                        }
+                        (li, frame.locals_base)
+                    };
                     let val = self.pop()?;
-                    self.locals[frame.locals_base + li as usize] = val;
+                    self.locals[locals_base + li as usize] = val;
                 }
 
                 OP_I32_CONST => {

@@ -363,7 +363,7 @@ pub fn send_frame(frame: &[u8]) -> bool {
         return false;
     }
 
-    let dev = unsafe { DEVICE.as_mut().unwrap() };
+    let dev = unsafe { (*(&raw mut DEVICE)).as_mut().unwrap() };
     let idx = dev.tx_cur;
 
     let desc = unsafe { &mut *dev.tx_ring.add(idx) };
@@ -412,7 +412,7 @@ pub fn recv_frame() -> Option<Vec<u8>> {
         return None;
     }
 
-    let dev = unsafe { DEVICE.as_mut().unwrap() };
+    let dev = unsafe { (*(&raw mut DEVICE)).as_mut().unwrap() };
     let idx = dev.rx_cur;
 
     let desc = unsafe { &mut *dev.rx_ring.add(idx) };
@@ -457,7 +457,7 @@ pub fn info() -> String {
         return alloc::format!("e1000e: not initialised (detected={})", is_detected());
     }
 
-    let dev = unsafe { DEVICE.as_ref().unwrap() };
+    let dev = unsafe { (*(&raw const DEVICE)).as_ref().unwrap() };
     let status = mmio_read(dev.mmio_base, REG_STATUS);
     let link_up = status & 0x02 != 0;
     let speed = match (status >> 6) & 0x03 {

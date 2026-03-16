@@ -9,7 +9,6 @@
 use crate::{pci, virtio, serial_println, klog_println, memory, net};
 use alloc::string::String;
 use alloc::vec;
-use alloc::vec::Vec;
 use x86_64::instructions::port::Port;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -196,7 +195,7 @@ pub fn init() {
     // Update the network state with real MAC
     {
         let mut n = net::NET.lock();
-        let mac = unsafe { DEVICE.as_ref().unwrap().mac };
+        let mac = unsafe { (*(&raw const DEVICE)).as_ref().unwrap().mac };
         n.mac = net::MacAddr(mac);
     }
 
@@ -212,7 +211,7 @@ pub fn send_frame(frame: &[u8]) -> Result<(), &'static str> {
     }
 
     unsafe {
-        let dev = DEVICE.as_mut().unwrap();
+        let dev = (*(&raw mut DEVICE)).as_mut().unwrap();
 
         // Allocate a physical frame for the TX packet (DMA-safe)
         let hdr = VirtioNetHdr::empty();
@@ -257,7 +256,7 @@ pub fn send_frame(frame: &[u8]) -> Result<(), &'static str> {
 
 /// Build and send an ARP request.
 pub fn send_arp_request(target_ip: net::Ipv4Addr) -> Result<(), &'static str> {
-    let dev = unsafe { DEVICE.as_ref().ok_or("not initialized")? };
+    let dev = unsafe { (*(&raw const DEVICE)).as_ref().ok_or("not initialized")? };
     let src_mac = dev.mac;
     let src_ip = net::NET.lock().ip;
 
@@ -285,7 +284,7 @@ pub fn send_arp_request(target_ip: net::Ipv4Addr) -> Result<(), &'static str> {
 
 /// Build and send an ICMP echo request (ping).
 pub fn send_ping(target_ip: net::Ipv4Addr, seq: u16) -> Result<(), &'static str> {
-    let dev = unsafe { DEVICE.as_ref().ok_or("not initialized")? };
+    let dev = unsafe { (*(&raw const DEVICE)).as_ref().ok_or("not initialized")? };
     let src_mac = dev.mac;
     let src_ip = net::NET.lock().ip;
 
@@ -392,7 +391,7 @@ unsafe fn write_reg8(base: u16, offset: u16, val: u8) { Port::<u8>::new(base + o
 pub fn is_detected() -> bool { INITIALIZED.load(Ordering::SeqCst) }
 
 pub fn info() -> String {
-    if let Some(dev) = unsafe { DEVICE.as_ref() } {
+    if let Some(dev) = unsafe { (*(&raw const DEVICE)).as_ref() } {
         let mac = dev.mac;
         alloc::format!("virtio-net: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, ready",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])

@@ -121,6 +121,16 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     agent::init();
     acl::init();
     power_mgmt::init();
+    hda::init();
+    wifi::init();
+    mmap::init();
+    proc_mgr::init();
+    elf_exec::init();
+    autocomplete::init();
+    installer::init();
+    multi_user::init();
+    service_mgr::init();
+    virtio_gpu_ext::init();
     kconfig::load();
     script::create_default_init();
     println!("[ok] AI subsystem ready");

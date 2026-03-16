@@ -1,7 +1,7 @@
 /// Minimal text editor — edit files directly in VGA text mode.
 /// Ctrl+S to save, Ctrl+Q to quit (or Esc), arrow keys to move cursor.
 
-use crate::{vga, vfs, keyboard::KeyEvent, serial_println};
+use crate::{vfs, keyboard::KeyEvent, serial_println};
 use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
 

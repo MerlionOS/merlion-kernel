@@ -214,7 +214,7 @@ pub fn print_banner() {
     use fmt::Write;
 
     let cyan = color_attr(Color::LightCyan, Color::Black);
-    let yellow = color_attr(Color::Yellow, Color::Black);
+    let _yellow = color_attr(Color::Yellow, Color::Black);
     let white = color_attr(Color::White, Color::Black);
     let gray = color_attr(Color::DarkGray, Color::Black);
     let default = color_attr(Color::LightGray, Color::Black);

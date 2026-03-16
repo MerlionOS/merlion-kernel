@@ -3,7 +3,6 @@
 /// and an audio device abstraction layer. Uses i16 PCM samples at 44100 Hz.
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::borrow::ToOwned;
 use alloc::format;

@@ -5,7 +5,7 @@
 use alloc::string::String;
 use alloc::format;
 use spin::Mutex;
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 /// Maximum syscall number we track (0..MAX_SYSCALL).
 const MAX_SYSCALL: usize = 16;

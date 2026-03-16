@@ -3,7 +3,6 @@
 /// HTTP/1.1 keep-alive, reverse proxy, and load balancing.
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 use spin::Mutex;

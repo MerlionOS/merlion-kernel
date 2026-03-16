@@ -3,7 +3,6 @@
 /// exit codes, wait/waitpid, and process groups.
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 use spin::Mutex;

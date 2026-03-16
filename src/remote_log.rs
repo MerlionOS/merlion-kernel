@@ -9,7 +9,6 @@
 /// ```
 
 use alloc::string::String;
-use alloc::vec::Vec;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use spin::Mutex;

@@ -414,7 +414,7 @@ pub fn info() -> String {
         return String::from("usb-eth: not detected");
     }
 
-    let dev = unsafe { &DEVICE };
+    let dev = unsafe { &*(&raw const DEVICE) };
     let sub = match dev.subclass {
         CDC_SUBCLASS_ECM => "ECM",
         CDC_SUBCLASS_NCM => "NCM",

@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use spin::Mutex;
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 // --- Request/Response Logging ---
 

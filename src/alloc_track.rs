@@ -6,7 +6,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::format;
 use spin::Mutex;
-use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Maximum tracked allocations (ring buffer).
 const MAX_TRACKED: usize = 256;

@@ -6,7 +6,6 @@
 
 use alloc::vec;
 use alloc::vec::Vec;
-use alloc::string::String;
 use crate::net::Ipv4Addr;
 
 // DHCP constants (RFC 2131 / 2132)

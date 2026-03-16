@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver, acl, power_mgmt};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, dhcp, gpt, power, forth, watch, wget, screensaver};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -454,6 +454,28 @@ pub fn dispatch(cmd: &str) {
             println!("  tmpfs-stats  - tmpfs statistics");
             println!("  pipes        - active pipes");
             println!("  mkfifo <p>   - create named pipe");
+            println!("Extended hardware:");
+            println!("  wifi-scan    - scan WiFi networks");
+            println!("  wifi-status  - WiFi connection status");
+            println!("  wifi-info    - WiFi driver info");
+            println!("  hda-info     - HDA audio info");
+            println!("  hda-codecs   - HDA codec list");
+            println!("  uefi-info    - UEFI runtime info");
+            println!("  uefi-vars    - UEFI variables");
+            println!("  run-elf <path> - run ELF program");
+            println!("  display-info - display/GPU info");
+            println!("  windows      - list windows");
+            println!("  screenshot   - capture screen");
+            println!("System management:");
+            println!("  who          - logged in users");
+            println!("  w            - who + activity");
+            println!("  last         - login history");
+            println!("  sessions     - session info");
+            println!("  systemctl    - list services");
+            println!("  systemctl start/stop/restart <s>");
+            println!("  boot-report  - boot timing");
+            println!("  install      - system installer");
+            println!("  disks        - list block devices");
         }
         "info" => {
             let mem = memory::stats();
@@ -2360,6 +2382,70 @@ pub fn dispatch(cmd: &str) {
                     Err(e) => println!("pstate: {}", e),
                 },
                 Err(_) => println!("Usage: pstate <0-4>"),
+            }
+        }
+        // -- v61-v70 extended hardware & system management --
+        "wifi-scan" => {
+            let results = crate::wifi::wifi_scan();
+            for bss in &results {
+                println!("  {} ch={} rssi={}", bss.ssid, bss.channel, bss.rssi);
+            }
+            if results.is_empty() { println!("No networks found."); }
+        }
+        "wifi-status" => { println!("{}", crate::wifi::wifi_status()); }
+        "wifi-info" => { println!("{}", crate::wifi::wifi_info()); }
+        "hda-info" => { println!("{}", crate::hda::hda_info()); }
+        "hda-codecs" => { println!("{}", crate::hda::list_codecs()); }
+        "uefi-info" => { println!("{}", crate::uefi_rt::uefi_info()); }
+        "uefi-vars" => {
+            let vars = crate::uefi_rt::list_variables();
+            for (name, guid, attr, size) in &vars {
+                println!("  {} guid={:#x} attr={:#x} size={}", name, guid, attr, size);
+            }
+            if vars.is_empty() { println!("No UEFI variables."); }
+        }
+        "display-info" => { println!("{}", crate::virtio_gpu_ext::display_info()); }
+        "windows" => { println!("{}", crate::virtio_gpu_ext::list_windows()); }
+        "screenshot" => { println!("{}", crate::virtio_gpu_ext::screenshot()); }
+        "who" => { println!("{}", crate::multi_user::who()); }
+        "w" => { println!("{}", crate::multi_user::w()); }
+        "last" => { println!("{}", crate::multi_user::last()); }
+        "sessions" => { println!("{}", crate::multi_user::sessions_info()); }
+        "systemctl" => { println!("{}", crate::service_mgr::list_services()); }
+        cmd if cmd.starts_with("systemctl start ") => {
+            let name = cmd.strip_prefix("systemctl start ").unwrap().trim();
+            match crate::service_mgr::start(name) {
+                Ok(()) => println!("Started {}", name),
+                Err(e) => println!("Failed: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("systemctl stop ") => {
+            let name = cmd.strip_prefix("systemctl stop ").unwrap().trim();
+            match crate::service_mgr::stop(name) {
+                Ok(()) => println!("Stopped {}", name),
+                Err(e) => println!("Failed: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("systemctl restart ") => {
+            let name = cmd.strip_prefix("systemctl restart ").unwrap().trim();
+            match crate::service_mgr::restart(name) {
+                Ok(()) => println!("Restarted {}", name),
+                Err(e) => println!("Failed: {}", e),
+            }
+        }
+        "boot-report" => { println!("{}", crate::service_mgr::boot_report()); }
+        "install" => {
+            match crate::installer::start_install() {
+                Ok(()) => println!("Installation complete."),
+                Err(e) => println!("install: {}", e),
+            }
+        }
+        "disks" => { println!("{}", crate::installer::format_disks()); }
+        cmd if cmd.starts_with("run-elf ") => {
+            let path = cmd.strip_prefix("run-elf ").unwrap().trim();
+            match crate::elf_exec::exec_elf(path, &[], &[]) {
+                Ok(code) => println!("ELF exited with code {}", code),
+                Err(e) => println!("run-elf: {}", e),
             }
         }
         _ => {

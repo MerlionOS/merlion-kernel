@@ -145,7 +145,7 @@ pub fn create_process(
 /// Open file descriptors are duplicated.  Returns `Ok(child_pid)`.
 pub fn fork(parent_pid: u32) -> Result<u32, &'static str> {
     let mut table = PROCESS_TABLE.lock();
-    let parent = table.get(&parent_pid).ok_or("parent not found")?;
+    let parent = table.get(parent_pid).ok_or("parent not found")?;
 
     let child_pid = alloc_pid();
     let child_root = clone_page_table_cow(parent.page_table_root)?;
@@ -158,7 +158,7 @@ pub fn fork(parent_pid: u32) -> Result<u32, &'static str> {
     let child_name = { let mut n = parent.name.clone(); n.push_str(".child"); n };
 
     // Mark parent's regions as CoW too (both sides must fault on write).
-    let parent_mut = table.get_mut(&parent_pid).ok_or("parent vanished")?;
+    let parent_mut = table.get_mut(parent_pid).ok_or("parent vanished")?;
     for region in parent_mut.memory_regions.iter_mut() { region.cow = true; }
     mark_page_table_cow(parent_mut.page_table_root);
 
@@ -229,7 +229,7 @@ pub fn wait(parent_pid: u32) -> Result<(u32, i32), &'static str> {
             if !table.iter().any(|p| p.ppid == parent_pid) {
                 return Err("no children");
             }
-            if let Some(p) = table.get_mut(&parent_pid) {
+            if let Some(p) = table.get_mut(parent_pid) {
                 p.state = ProcessState::Waiting;
             }
         }
@@ -239,18 +239,18 @@ pub fn wait(parent_pid: u32) -> Result<(u32, i32), &'static str> {
 
 /// Return the PID of the process (validates it exists).
 pub fn getpid(pid: u32) -> Result<u32, &'static str> {
-    PROCESS_TABLE.lock().get(&pid).map(|p| p.pid).ok_or("process not found")
+    PROCESS_TABLE.lock().get(pid).map(|p| p.pid).ok_or("process not found")
 }
 
 /// Return the parent PID of `pid`.
 pub fn getppid(pid: u32) -> Result<u32, &'static str> {
-    PROCESS_TABLE.lock().get(&pid).map(|p| p.ppid).ok_or("process not found")
+    PROCESS_TABLE.lock().get(pid).map(|p| p.ppid).ok_or("process not found")
 }
 
 /// Update resource limits for a process.
 pub fn set_limits(pid: u32, limits: ResourceLimits) -> Result<(), &'static str> {
     let mut table = PROCESS_TABLE.lock();
-    table.get_mut(&pid).ok_or("process not found")?.limits = limits;
+    table.get_mut(pid).ok_or("process not found")?.limits = limits;
     crate::serial_println!("[proc_mgr] set_limits pid={}: mem={}, fds={}", pid, limits.max_memory, limits.max_fds);
     Ok(())
 }
@@ -258,7 +258,7 @@ pub fn set_limits(pid: u32, limits: ResourceLimits) -> Result<(), &'static str> 
 /// Check whether `pid` can map `extra_bytes` without exceeding its memory limit.
 pub fn check_memory_limit(pid: u32, extra_bytes: usize) -> Result<(), &'static str> {
     let table = PROCESS_TABLE.lock();
-    let proc = table.get(&pid).ok_or("process not found")?;
+    let proc = table.get(pid).ok_or("process not found")?;
     if proc.total_memory() + extra_bytes > proc.limits.max_memory {
         return Err("memory limit exceeded");
     }
@@ -268,7 +268,7 @@ pub fn check_memory_limit(pid: u32, extra_bytes: usize) -> Result<(), &'static s
 /// Check whether `pid` can open another file descriptor.
 pub fn check_fd_limit(pid: u32) -> Result<(), &'static str> {
     let table = PROCESS_TABLE.lock();
-    let proc = table.get(&pid).ok_or("process not found")?;
+    let proc = table.get(pid).ok_or("process not found")?;
     if proc.fd_count() >= proc.limits.max_fds { return Err("fd limit exceeded"); }
     Ok(())
 }
@@ -279,18 +279,19 @@ pub fn kill_process(pid: u32, exit_code: i32) -> Result<(), &'static str> {
     if pid == 0 { return Err("cannot kill kernel process"); }
 
     let mut table = PROCESS_TABLE.lock();
-    let proc = table.get_mut(&pid).ok_or("process not found")?;
 
-    // Close file descriptors.
-    let fds: Vec<usize> = proc.open_fds.drain(..).collect();
+    // Close file descriptors and release memory regions.
+    let (fds, freed_bytes, ppid) = {
+        let proc = table.get_mut(pid).ok_or("process not found")?;
+        let fds: Vec<usize> = proc.open_fds.drain(..).collect();
+        let freed_bytes: usize = proc.memory_regions.iter().map(|r| r.len).sum();
+        proc.memory_regions.clear();
+        let ppid = proc.ppid;
+        proc.state = ProcessState::Zombie(exit_code);
+        (fds, freed_bytes, ppid)
+    };
+
     for fd in &fds { let _ = crate::fd::close(*fd); }
-
-    // Release memory regions.
-    let freed_bytes: usize = proc.memory_regions.iter().map(|r| r.len).sum();
-    proc.memory_regions.clear();
-
-    let ppid = proc.ppid;
-    proc.state = ProcessState::Zombie(exit_code);
 
     crate::serial_println!("[proc_mgr] kill pid={} exit={}: {} fds, {} bytes freed", pid, exit_code, fds.len(), freed_bytes);
     crate::klog_println!("[proc_mgr] pid {} exited (code {})", pid, exit_code);
@@ -303,7 +304,7 @@ pub fn kill_process(pid: u32, exit_code: i32) -> Result<(), &'static str> {
     }
 
     // Wake parent if it is blocked in wait().
-    if let Some(parent) = table.get_mut(&ppid) {
+    if let Some(parent) = table.get_mut(ppid) {
         if parent.state == ProcessState::Waiting { parent.state = ProcessState::Ready; }
     }
     Ok(())

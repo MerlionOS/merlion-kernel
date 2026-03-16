@@ -6,7 +6,6 @@
 
 use crate::{pci, memory, serial_println, klog_println};
 use alloc::string::String;
-use alloc::vec::Vec;
 use core::ptr;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -431,9 +430,9 @@ pub fn init() {
         }
 
         // Extract serial (bytes 4-23) and model (bytes 24-63)
-        ptr::copy_nonoverlapping(id_virt.add(4), STATE.serial.as_mut_ptr(), 20);
-        ptr::copy_nonoverlapping(id_virt.add(24), STATE.model.as_mut_ptr(), 40);
-        serial_println!("[nvme] model: {}", core::str::from_utf8(&STATE.model).unwrap_or("?").trim());
+        ptr::copy_nonoverlapping(id_virt.add(4), (&raw mut STATE.serial).cast::<u8>(), 20);
+        ptr::copy_nonoverlapping(id_virt.add(24), (&raw mut STATE.model).cast::<u8>(), 40);
+        serial_println!("[nvme] model: {}", core::str::from_utf8(core::slice::from_raw_parts((&raw const STATE.model).cast::<u8>(), 40)).unwrap_or("?").trim());
 
         // --- Step 5: Identify Namespace 1 (CNS = 0) ---
         ptr::write_bytes(id_virt, 0, PAGE_SIZE);
@@ -466,7 +465,7 @@ pub fn init() {
         cmd.cdw0 = (ADMIN_OPC_CREATE_IO_CQ as u32) | ((cid as u32) << 16);
         cmd.prp1 = iocq_phys;
         // CDW10: queue size (0-based) in upper 16 bits, QID in lower 16 bits
-        cmd.cdw10 = (((IO_QUEUE_DEPTH as u32 - 1) << 16) | 1);
+        cmd.cdw10 = ((IO_QUEUE_DEPTH as u32 - 1) << 16) | 1;
         // CDW11: physically contiguous (bit 0), interrupts disabled
         cmd.cdw11 = 1;
         if admin_submit_and_wait(&cmd).is_err() {
@@ -484,7 +483,7 @@ pub fn init() {
         let cid = alloc_cid();
         cmd.cdw0 = (ADMIN_OPC_CREATE_IO_SQ as u32) | ((cid as u32) << 16);
         cmd.prp1 = iosq_phys;
-        cmd.cdw10 = (((IO_QUEUE_DEPTH as u32 - 1) << 16) | 1);
+        cmd.cdw10 = ((IO_QUEUE_DEPTH as u32 - 1) << 16) | 1;
         // CDW11: physically contiguous (bit 0), CQ identifier = 1 (bits 31:16)
         cmd.cdw11 = (1 << 16) | 1;
         if admin_submit_and_wait(&cmd).is_err() {
@@ -572,12 +571,12 @@ pub fn info() -> String {
     }
     unsafe {
         let vs = ptr::read_volatile(&(*STATE.regs).vs);
-        let model = core::str::from_utf8(&STATE.model).unwrap_or("?").trim();
+        let model = core::str::from_utf8(core::slice::from_raw_parts((&raw const STATE.model).cast::<u8>(), 40)).unwrap_or("?").trim();
         alloc::format!(
             "nvme: v{}.{}.{}, model=\"{}\", ns1={} sectors ({} MiB)",
             (vs >> 16) & 0xFF, (vs >> 8) & 0xFF, vs & 0xFF,
-            model, STATE.ns_blocks,
-            STATE.ns_blocks * SECTOR_SIZE as u64 / (1024 * 1024),
+            model, core::ptr::read_volatile(&raw const STATE.ns_blocks),
+            core::ptr::read_volatile(&raw const STATE.ns_blocks) * SECTOR_SIZE as u64 / (1024 * 1024),
         )
     }
 }

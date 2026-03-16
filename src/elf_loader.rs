@@ -2,11 +2,10 @@
 /// Parses ELF-64 program headers, maps LOAD segments into a user
 /// page table, and enters ring 3 at the ELF entry point.
 
-use crate::{elf, memory, process, serial_println, klog_println, virtio_blk};
+use crate::{elf, memory, serial_println, klog_println, virtio_blk};
 use x86_64::structures::paging::{Page, PageTableFlags};
 use x86_64::VirtAddr;
 use alloc::vec::Vec;
-use alloc::string::String;
 
 /// Load and execute an ELF binary from a byte slice.
 pub fn load_and_exec(name: &str, data: &[u8]) -> Result<(), &'static str> {

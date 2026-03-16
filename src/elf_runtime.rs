@@ -170,7 +170,7 @@ impl LinkerState {
         let entry = lib.got.get_mut(got_index)?;
         if entry.bound { return Some(entry.resolved_addr); }
         let name = entry.symbol_name.clone();
-        drop(lib);
+        let _ = lib;
         let addr = self.resolve_symbol(&name)?;
         let lib = self.libraries.iter_mut().find(|l| l.handle == handle)?;
         let entry = lib.got.get_mut(got_index)?;

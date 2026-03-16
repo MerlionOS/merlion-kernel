@@ -8,7 +8,7 @@ pub const CHAR_HEIGHT: usize = 16;
 /// Get the bitmap for an ASCII character (16 bytes, MSB = leftmost pixel).
 pub fn glyph(ch: u8) -> &'static [u8; CHAR_HEIGHT] {
     if ch >= 0x20 && ch <= 0x7E {
-        &FONT[(ch as usize - 0x20)]
+        &FONT[ch as usize - 0x20]
     } else {
         &FONT[0] // space for unknown chars
     }

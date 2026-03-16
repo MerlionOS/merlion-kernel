@@ -3,7 +3,7 @@
 /// memory allocation, VFS operations, IPC throughput, timer precision,
 /// context switch overhead, and serial I/O.
 
-use crate::{println, print, timer, allocator, vfs, ipc, slab};
+use crate::{println, timer, vfs, ipc, slab};
 use alloc::vec::Vec;
 use alloc::string::String;
 use alloc::format;
@@ -111,7 +111,7 @@ fn bench_vfs_write() -> BenchResult {
     let start = timer::ticks();
     let ops = 200u64;
 
-    for i in 0..ops {
+    for _i in 0..ops {
         let _ = vfs::write("/tmp/_bench", "benchmark test data 1234567890");
     }
     let _ = vfs::rm("/tmp/_bench");

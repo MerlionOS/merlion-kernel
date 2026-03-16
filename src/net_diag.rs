@@ -3,7 +3,7 @@
 
 use alloc::string::String;
 use alloc::format;
-use crate::{println, net, e1000e, virtio_net, netstack};
+use crate::{net, e1000e, virtio_net};
 
 /// Run a full network diagnostic.
 pub fn run() -> String {

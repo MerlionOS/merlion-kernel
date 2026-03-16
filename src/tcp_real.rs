@@ -604,7 +604,7 @@ pub fn close(sock_id: usize) -> Result<(), &'static str> {
     };
 
     for _ in 0..MAX_RETRIES {
-        if let Some((hdr, raw, _peer_ip)) = poll_tcp_segment(local_port) {
+        if let Some((hdr, _raw, _peer_ip)) = poll_tcp_segment(local_port) {
             let mut sockets = SOCKETS.lock();
             let sock = sockets.get_mut(sock_id).ok_or("invalid socket id")?;
             let flags = header_flags(&hdr);

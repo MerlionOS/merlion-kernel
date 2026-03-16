@@ -148,7 +148,7 @@ pub fn init() {
         let cap_hi = read_reg32(io_base, REG_BLK_CAPACITY + 4) as u64;
         DEVICE.capacity = cap_lo | (cap_hi << 32);
         serial_println!("[virtio-blk] capacity: {} sectors ({} KiB)",
-            DEVICE.capacity, DEVICE.capacity / 2);
+            core::ptr::read_volatile(&raw const DEVICE.capacity), core::ptr::read_volatile(&raw const DEVICE.capacity) / 2);
 
         // 6. Set up virtqueue 0
         write_reg16(io_base, REG_QUEUE_SELECT, 0);
@@ -228,12 +228,12 @@ fn do_request(type_: u32, sector: u64, buf: &mut [u8; 512]) -> Result<(), &'stat
         let io_base = DEVICE.io_base;
 
         // Build request header
-        let mut header = VirtioBlkReqHeader {
+        let header = VirtioBlkReqHeader {
             type_,
             reserved: 0,
             sector,
         };
-        let mut status: u8 = 0xFF;
+        let status: u8 = 0xFF;
 
         // Set up descriptor chain: header → data → status
         let d0 = 0u16; // descriptor for header

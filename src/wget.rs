@@ -6,7 +6,7 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use crate::{http, serial_println, println, print, tcp_real, net};
+use crate::{http, serial_println, println, tcp_real, net};
 
 /// Fetch a URL and display the result.
 pub fn fetch(url: &str) -> Result<String, &'static str> {

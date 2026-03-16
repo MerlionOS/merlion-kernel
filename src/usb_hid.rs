@@ -213,7 +213,7 @@ pub fn parse_report(report: &[u8; 8]) -> Vec<KeyEvent> {
     let shifted = parsed.shift_held();
 
     // Safety: single-context access from xHCI handler.
-    let state = unsafe { &mut STATE };
+    let state = unsafe { &mut *(&raw mut STATE) };
 
     for &keycode in &parsed.keycodes {
         if keycode == 0 {

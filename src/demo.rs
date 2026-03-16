@@ -1,7 +1,7 @@
 /// Automated demo — showcases all MerlionOS capabilities.
 /// Run via the `demo` shell command to walk through every subsystem.
 
-use crate::{print, println, serial_println, task, timer};
+use crate::{println, timer};
 
 /// Run the full system demo.
 pub fn run() {

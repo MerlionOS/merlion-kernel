@@ -3,7 +3,6 @@
 //! Line-level differencing via longest common subsequence, with unified and
 //! colored output formats, patch application, and diff statistics.
 
-#![no_std]
 extern crate alloc;
 
 use alloc::string::String;

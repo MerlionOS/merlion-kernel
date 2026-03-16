@@ -326,6 +326,6 @@ pub fn info() -> String {
         let list: Vec<String> = ports.iter().map(|p| alloc::format!("{}", p)).collect();
         alloc::format!("ahci: v{}.{}, {} of {} ports active [{}]",
             (v >> 16) & 0xFFFF, v & 0xFFFF,
-            STATE.port_count, (cap & 0x1F) + 1, list.join(", "))
+            core::ptr::read_volatile(&raw const STATE.port_count), (cap & 0x1F) + 1, list.join(", "))
     }
 }

@@ -3,11 +3,8 @@
 /// to audio engine note sequences for playback.
 
 use alloc::string::String;
-use alloc::vec;
 use alloc::vec::Vec;
-use alloc::borrow::ToOwned;
 use alloc::format;
-use spin::Mutex;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 // ---------------------------------------------------------------------------

@@ -144,7 +144,9 @@ pub fn msync(addr: u64, length: u64) -> Result<(), &'static str> {
         let byte = unsafe { core::ptr::read_volatile((region.virt_addr + i as u64) as *const u8) };
         buf.push(byte);
     }
-    crate::vfs::write(&region.file_path, &buf);
+    // Convert bytes to string for VFS write (best-effort lossy conversion).
+    let text = unsafe { core::str::from_utf8_unchecked(&buf) };
+    let _ = crate::vfs::write(&region.file_path, text);
 
     SYNCS_PERFORMED.fetch_add(1, Ordering::SeqCst);
     crate::serial_println!("[mmap] msync {} bytes {:#x} → {}", sync_len, addr, region.file_path);
@@ -172,13 +174,13 @@ pub fn handle_page_fault(fault_addr: u64) -> bool {
     if region.prot & PROT_WRITE != 0 { flags |= PageTableFlags::WRITABLE; }
 
     let page = Page::<Size4KiB>::containing_address(VirtAddr::new(page_addr));
-    if crate::memory::map_page_global(page, flags).is_err() {
+    if crate::memory::map_page_global(page, flags).is_none() {
         crate::serial_println!("[mmap] FAILED to map page at {:#x}", page_addr);
         return false;
     }
 
     // Load file content into the freshly mapped page.
-    if let Some(data) = crate::vfs::cat(&region.file_path) {
+    if let Ok(data) = crate::vfs::cat(&region.file_path) {
         let file_off = (region.offset + page_offset) as usize;
         let page_buf = unsafe {
             core::slice::from_raw_parts_mut(page_addr as *mut u8, PAGE_SIZE as usize)
@@ -186,7 +188,7 @@ pub fn handle_page_fault(fault_addr: u64) -> bool {
         for b in page_buf.iter_mut() { *b = 0; }
         if file_off < data.len() {
             let n = core::cmp::min(data.len() - file_off, PAGE_SIZE as usize);
-            page_buf[..n].copy_from_slice(&data[file_off..file_off + n]);
+            page_buf[..n].copy_from_slice(&data.as_bytes()[file_off..file_off + n]);
         }
     }
 

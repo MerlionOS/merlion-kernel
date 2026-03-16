@@ -132,21 +132,21 @@ pub fn create_shmem(name: &str, size: usize, owner_pid: Pid) -> Option<ShmemId> 
     }
 
     let mut table = TABLE.lock();
-    for (i, slot) in table.slots.iter_mut().enumerate() {
-        if matches!(slot, Slot::Free) {
-            let id = table.next_id;
-            table.next_id += 1;
-            *slot = Slot::Active(SharedMemRegion {
-                id,
-                name: String::from(name),
-                size: aligned,
-                phys_frame: first_frame,
-                ref_count: 0,
-                owner_pid,
-                attached: Vec::new(),
-            });
-            return Some(id);
-        }
+    // Find a free slot index first to avoid double borrow.
+    let free_idx = table.slots.iter().position(|s| matches!(s, Slot::Free));
+    if let Some(idx) = free_idx {
+        let id = table.next_id;
+        table.next_id += 1;
+        table.slots[idx] = Slot::Active(SharedMemRegion {
+            id,
+            name: String::from(name),
+            size: aligned,
+            phys_frame: first_frame,
+            ref_count: 0,
+            owner_pid,
+            attached: Vec::new(),
+        });
+        return Some(id);
     }
     None // table full
 }

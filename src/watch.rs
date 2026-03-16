@@ -7,7 +7,7 @@
 ///
 /// Press 'q' to stop.
 
-use crate::{println, print, timer, rtc, keyboard::KeyEvent};
+use crate::{timer, rtc, keyboard::KeyEvent};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -67,7 +67,7 @@ pub fn run(interval: u64, command: &str) {
 
         // Position cursor at row 2
         {
-            let mut w = crate::vga::WRITER.lock();
+            let _w = crate::vga::WRITER.lock();
             // Hack: set internal position by writing newlines
             // Better: directly set row/col
         }
@@ -89,11 +89,11 @@ pub fn run(interval: u64, command: &str) {
     RUNNING.store(false, Ordering::SeqCst);
 }
 
-fn reset_cursor_to(row: usize, col: usize) {
+fn reset_cursor_to(_row: usize, _col: usize) {
     // Directly manipulate the VGA writer's internal state
     // Since Writer fields are private, we use a workaround:
     // clear and write empty lines to reach the target row
-    let mut w = crate::vga::WRITER.lock();
+    let w = crate::vga::WRITER.lock();
     // Access via the public clear + write_byte methods
     drop(w); // we already cleared the screen above
     // The next println! will write at wherever the writer cursor is
