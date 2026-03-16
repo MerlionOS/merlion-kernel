@@ -404,6 +404,32 @@ pub fn dispatch(cmd: &str) {
             println!("  ukernel on   - enable microkernel mode");
             println!("  ukernel off  - disable microkernel mode");
             println!("  health       - service health check");
+            println!("Audio & media:");
+            println!("  audio-info   - audio engine info");
+            println!("  audio-stats  - audio statistics");
+            println!("  audio-demo   - play demo sounds");
+            println!("  play-tone <f> <ms> - play tone");
+            println!("  midi-info    - MIDI info");
+            println!("  audio-ch     - audio mixer channels");
+            println!("System tools:");
+            println!("  proc-list    - user processes");
+            println!("  proc-stats   - process statistics");
+            println!("  widgets      - list GUI widgets");
+            println!("  widget-demo  - GUI demo");
+            println!("  notify <msg> - send notification");
+            println!("  notifications - list notifications");
+            println!("  ipv6-info    - IPv6 status");
+            println!("  ipv6-stats   - IPv6 statistics");
+            println!("  ndp-table    - NDP neighbor table");
+            println!("  https-info   - HTTPS server info");
+            println!("  https-stats  - HTTPS statistics");
+            println!("  pkg-list     - list all packages");
+            println!("  pkg-installed - installed packages");
+            println!("  pkg-info <n> - package details");
+            println!("  pkg-install <n> - install package");
+            println!("  pkg-search <q> - search packages");
+            println!("  build-stats  - build system stats");
+            println!("  build-config - build configuration");
         }
         "info" => {
             let mem = memory::stats();
@@ -2140,6 +2166,62 @@ pub fn dispatch(cmd: &str) {
         "ukernel on" => { crate::microkernel::enable_microkernel_mode(); println!("Microkernel mode enabled."); }
         "ukernel off" => { crate::microkernel::disable_microkernel_mode(); println!("Microkernel mode disabled."); }
         "health" => { println!("{}", crate::microkernel::health_check()); }
+        // v46-v50: Audio & media
+        "audio-info" => { println!("{}", crate::audio_engine::audio_info()); }
+        "audio-stats" => { println!("{}", crate::audio_engine::audio_stats()); }
+        "audio-demo" => { println!("{}", crate::audio_engine::demo()); }
+        "audio-ch" => { println!("{}", crate::audio_engine::list_channels()); }
+        "midi-info" => { println!("{}", crate::midi::midi_stats()); }
+        cmd if cmd.starts_with("play-tone ") => {
+            let parts: alloc::vec::Vec<&str> = cmd.strip_prefix("play-tone ").unwrap().trim().split(' ').collect();
+            if parts.len() == 2 {
+                let freq = parts[0].parse::<u32>().unwrap_or(440);
+                let dur = parts[1].parse::<u32>().unwrap_or(500);
+                crate::audio_engine::play_tone(freq, dur);
+                println!("Playing {}Hz for {}ms", freq, dur);
+            } else {
+                println!("Usage: play-tone <freq> <duration_ms>");
+            }
+        }
+        // v46-v50: System tools
+        "proc-list" => { println!("{}", crate::userland::list_processes()); }
+        "proc-stats" => { println!("{}", crate::userland::process_stats()); }
+        "widgets" => { println!("{}", crate::widget::list_widgets()); }
+        "widget-demo" => { println!("{}", crate::widget::demo()); }
+        "notifications" => { println!("{}", crate::dialog::list_notifications()); }
+        cmd if cmd.starts_with("notify ") => {
+            let msg = cmd.strip_prefix("notify ").unwrap().trim();
+            crate::dialog::notify("Shell", msg, crate::dialog::NotifLevel::Info);
+            println!("Notification sent.");
+        }
+        "ipv6-info" => { println!("{}", crate::ipv6::ipv6_info()); }
+        "ipv6-stats" => { println!("{}", crate::ipv6::ipv6_stats()); }
+        "ndp-table" => { println!("{}", crate::ipv6::ndp_table()); }
+        "https-info" => { println!("{}", crate::https_server::https_info()); }
+        "https-stats" => { println!("{}", crate::https_server::https_stats()); }
+        "pkg-list" => { println!("{}", crate::pkg_registry::list_packages()); }
+        "pkg-installed" => { println!("{}", crate::pkg_registry::list_installed()); }
+        cmd if cmd.starts_with("pkg-info ") => {
+            let name = cmd.strip_prefix("pkg-info ").unwrap().trim();
+            println!("{}", crate::pkg_registry::package_info(name));
+        }
+        cmd if cmd.starts_with("pkg-install ") => {
+            let name = cmd.strip_prefix("pkg-install ").unwrap().trim();
+            match crate::pkg_registry::install(name) {
+                Ok(msg) => println!("{}", msg),
+                Err(e) => println!("pkg-install: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("pkg-search ") => {
+            let query = cmd.strip_prefix("pkg-search ").unwrap().trim();
+            let results = crate::pkg_registry::search_packages(query);
+            if results.is_empty() { println!("No packages found."); }
+            for pkg in &results {
+                println!("  {} {} — {}", pkg.name, pkg.version.display(), pkg.description);
+            }
+        }
+        "build-stats" => { println!("{}", crate::build_system::build_stats()); }
+        "build-config" => { println!("{}", crate::build_system::show_config()); }
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {

@@ -95,6 +95,16 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     dfs::init();
     rt_sched::init();
     microkernel::init();
+    audio_engine::init();
+    midi::init();
+    userland::init();
+    libc::init();
+    widget::init();
+    dialog::init();
+    ipv6::init();
+    https_server::init();
+    pkg_registry::init();
+    build_system::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
