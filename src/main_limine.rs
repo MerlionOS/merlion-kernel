@@ -229,6 +229,9 @@ extern "C" fn _start() -> ! {
         NEXT_FRAME.store(best_base, Ordering::SeqCst);
     }
 
+    // Set global PHYS_MEM_OFFSET so phys_to_virt() works everywhere
+    unsafe { merlion_kernel::memory::set_phys_mem_offset(hhdm_offset); }
+
     // Phase 4: CPU tables
     merlion_kernel::gdt::init();
     merlion_kernel::serial_println!("[ok] GDT loaded");

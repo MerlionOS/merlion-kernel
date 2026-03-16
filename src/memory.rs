@@ -40,6 +40,12 @@ pub fn phys_mem_offset() -> VirtAddr {
     VirtAddr::new(unsafe { PHYS_MEM_OFFSET })
 }
 
+/// Set the physical memory offset (used by Limine boot path which doesn't
+/// call `init()` with a MemoryMap).
+pub unsafe fn set_phys_mem_offset(offset: u64) {
+    PHYS_MEM_OFFSET = offset;
+}
+
 /// Allocate a physical frame from the global allocator.
 pub fn alloc_frame() -> Option<PhysFrame<Size4KiB>> {
     FRAME_ALLOCATOR.lock().as_mut()?.allocate_frame()
