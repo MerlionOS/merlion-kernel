@@ -26,6 +26,10 @@ path = "src/main.rs"
 name = "merlion-limine"
 path = "src/main_limine.rs"
 
+[[bin]]
+name = "merlion-pi"
+path = "src/main_pi.rs"
+
 [package.metadata.bootimage]
 test-args = [
     "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",

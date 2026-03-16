@@ -454,6 +454,13 @@ pub fn dispatch(cmd: &str) {
             println!("  tmpfs-stats  - tmpfs statistics");
             println!("  pipes        - active pipes");
             println!("  mkfifo <p>   - create named pipe");
+            println!("Raspberry Pi hardware:");
+            println!("  gpio-info    - GPIO pin states");
+            println!("  gpio-stats   - GPIO statistics");
+            println!("  gpio set <p> <v> - set pin output");
+            println!("  gpio read <p> - read pin level");
+            println!("  sdcard       - SD card info");
+            println!("  sdcard-stats - SD I/O statistics");
             println!("Extended hardware:");
             println!("  wifi-scan    - scan WiFi networks");
             println!("  wifi-status  - WiFi connection status");
@@ -2607,6 +2614,42 @@ pub fn dispatch(cmd: &str) {
                 }
             }
         }
+
+        // Raspberry Pi GPIO & SD card
+        "gpio-info" => { println!("{}", crate::gpio::gpio_info()); }
+        "gpio-stats" => { println!("{}", crate::gpio::gpio_stats()); }
+        cmd if cmd.starts_with("gpio set ") => {
+            let args: alloc::vec::Vec<&str> = cmd.strip_prefix("gpio set ").unwrap().trim().split(' ').collect();
+            if args.len() == 2 {
+                if let Ok(pin) = args[0].parse::<u8>() {
+                    let level = match args[1] {
+                        "1" | "high" => crate::gpio::PinLevel::High,
+                        _ => crate::gpio::PinLevel::Low,
+                    };
+                    match crate::gpio::write(pin, level) {
+                        Ok(()) => println!("GPIO {} set to {:?}", pin, level),
+                        Err(e) => println!("gpio set: {}", e),
+                    }
+                } else {
+                    println!("gpio set: invalid pin number");
+                }
+            } else {
+                println!("Usage: gpio set <pin> <0|1|high|low>");
+            }
+        }
+        cmd if cmd.starts_with("gpio read ") => {
+            let pin_str = cmd.strip_prefix("gpio read ").unwrap().trim();
+            if let Ok(pin) = pin_str.parse::<u8>() {
+                match crate::gpio::read(pin) {
+                    Ok(level) => println!("GPIO {}: {:?}", pin, level),
+                    Err(e) => println!("gpio read: {}", e),
+                }
+            } else {
+                println!("gpio read: invalid pin number");
+            }
+        }
+        "sdcard" => { println!("{}", crate::sdcard::sdcard_info()); }
+        "sdcard-stats" => { println!("{}", crate::sdcard::sdcard_stats()); }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),

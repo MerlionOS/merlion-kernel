@@ -123,6 +123,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     power_mgmt::init();
     hda::init();
     wifi::init();
+    gpio::init();
+    let _ = sdcard::init();
     mmap::init();
     proc_mgr::init();
     elf_exec::init();

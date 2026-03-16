@@ -1,4 +1,4 @@
-.PHONY: build run run-serial run-fullscreen run-disk disk test limine-kernel iso run-uefi run-uefi-mac usb clean
+.PHONY: build run run-serial run-fullscreen run-disk disk test limine-kernel iso run-uefi run-uefi-mac usb pi pi-img run-pi run-pi-virt pi-sd clean
 
 KERNEL_BIN = target/x86_64-unknown-none/debug/bootimage-merlion-kernel.bin
 DISK_IMG = disk.img
@@ -122,6 +122,51 @@ usb: iso
 	@echo "   Linux:  sudo dd if=$(ISO_FILE) of=/dev/sdX bs=4M status=progress && sync"
 	@echo "   macOS:  sudo dd if=$(ISO_FILE) of=/dev/rdiskN bs=4m && sync"
 	@echo ""
+
+# -------------------------------------------------------
+# Raspberry Pi (aarch64)
+# -------------------------------------------------------
+
+PI_KERNEL = target/aarch64-unknown-none/release/merlion-pi
+
+# Build kernel for Raspberry Pi
+pi:
+	cargo build --bin merlion-pi --target aarch64-unknown-none --release
+	@echo "Pi kernel: $(PI_KERNEL)"
+
+# Create kernel8.img for Pi SD card
+pi-img: pi
+	cp $(PI_KERNEL) kernel8.img
+	@echo "Created kernel8.img — copy to Pi SD card /boot/"
+
+# Test Pi kernel in QEMU
+run-pi: pi
+	qemu-system-aarch64 \
+		-machine raspi3b \
+		-serial stdio \
+		-display none \
+		-kernel $(PI_KERNEL)
+
+# Alternative: test with generic virt machine (simpler, more reliable)
+run-pi-virt: pi
+	qemu-system-aarch64 \
+		-machine virt -cpu cortex-a72 -m 1G \
+		-serial stdio \
+		-display none \
+		-kernel $(PI_KERNEL)
+
+# Create Pi SD card image
+pi-sd: pi-img
+	@echo "=== Prepare SD Card ==="
+	@echo "1. Format SD card as FAT32"
+	@echo "2. Download Pi firmware:"
+	@echo "   https://github.com/raspberrypi/firmware/tree/master/boot"
+	@echo "   Copy: bootcode.bin, start.elf, fixup.dat"
+	@echo "3. Copy to SD card:"
+	@echo "   cp kernel8.img /Volumes/boot/"
+	@echo "   cp pi-config.txt /Volumes/boot/config.txt"
+	@echo "4. Insert SD card in Pi and power on"
+	@echo "5. Connect serial cable to GPIO 14/15"
 
 clean:
 	cargo clean
