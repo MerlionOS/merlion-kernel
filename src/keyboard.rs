@@ -13,6 +13,7 @@ static SHIFT: AtomicBool = AtomicBool::new(false);
 #[derive(Debug, Clone, Copy)]
 pub enum KeyEvent {
     Char(char),
+    Escape,
     ArrowUp,
     ArrowDown,
     ArrowLeft,
@@ -64,6 +65,11 @@ pub fn process_scancode(scancode: u8) -> Option<KeyEvent> {
     }
 
     let shifted = SHIFT.load(Ordering::SeqCst);
+
+    // Escape key
+    if scancode == 0x01 {
+        return Some(KeyEvent::Escape);
+    }
 
     // Normal keys
     let ch = match scancode {

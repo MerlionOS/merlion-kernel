@@ -321,5 +321,6 @@ pub fn route_key(event: KeyEvent) {
         KeyEvent::Home   => pane.cursor_x = 0,
         KeyEvent::End    => pane.cursor_x = pane.line_buf.len().min(pane.width.saturating_sub(1)),
         KeyEvent::Delete => { if pane.cursor_x < pane.line_buf.len() { pane.line_buf.remove(pane.cursor_x); } }
+        KeyEvent::Escape => {} // ignored in tmux
     }
 }

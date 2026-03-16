@@ -1368,7 +1368,7 @@ impl Editor {
             }
 
             // Escape clears pending
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 self.count = None;
                 self.pending_op = None;
                 self.message.clear();
@@ -1383,7 +1383,7 @@ impl Editor {
 
     fn handle_insert(&mut self, key: KeyEvent) {
         match key {
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 // Escape — back to normal
                 self.mode = Mode::Normal;
                 if self.cursor.col > 0 {
@@ -1486,7 +1486,7 @@ impl Editor {
 
     fn handle_visual(&mut self, key: KeyEvent) {
         match key {
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 self.mode = Mode::Normal;
                 self.message.clear();
                 return;
@@ -1620,7 +1620,7 @@ impl Editor {
 
     fn handle_command_input(&mut self, key: KeyEvent) {
         match key {
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 self.mode = Mode::Normal;
                 self.command_buffer.clear();
             }
@@ -1648,7 +1648,7 @@ impl Editor {
 
     fn handle_search_input(&mut self, key: KeyEvent) {
         match key {
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 self.mode = Mode::Normal;
                 self.command_buffer.clear();
             }
@@ -1676,7 +1676,7 @@ impl Editor {
 
     fn handle_replace(&mut self, key: KeyEvent) {
         match key {
-            KeyEvent::Char('\x1B') => {
+            KeyEvent::Escape | KeyEvent::Char('\x1B') => {
                 self.mode = Mode::Normal;
             }
             KeyEvent::Char(ch) if !ch.is_ascii_control() => {
