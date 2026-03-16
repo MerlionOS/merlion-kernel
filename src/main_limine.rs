@@ -1,20 +1,16 @@
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 
 use core::panic::PanicInfo;
-
-/// Limine base revision -- we support revision 2+.
-#[used]
-#[link_section = ".limine_requests"]
-static BASE_REVISION: [u64; 3] = [0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 2];
+use x86_64::VirtAddr;
 
 // ---------------------------------------------------------------------------
-// Limine protocol structures (defined inline to avoid external crate deps)
+// Limine protocol structures (inline — no external crate needed)
 // ---------------------------------------------------------------------------
 
-/// Framebuffer request.
 #[repr(C)]
 struct LimineFramebufferRequest {
     id: [u64; 4],
@@ -38,16 +34,8 @@ struct LimineFramebuffer {
     height: u64,
     pitch: u64,
     bpp: u16,
-    memory_model: u8,
-    red_mask_size: u8,
-    red_mask_shift: u8,
-    green_mask_size: u8,
-    green_mask_shift: u8,
-    blue_mask_size: u8,
-    blue_mask_shift: u8,
 }
 
-/// Memory map request.
 #[repr(C)]
 struct LimineMemmapRequest {
     id: [u64; 4],
@@ -71,10 +59,8 @@ struct LimineMemmapEntry {
     entry_type: u64,
 }
 
-#[allow(dead_code)]
 const LIMINE_MEMMAP_USABLE: u64 = 0;
 
-/// HHDM (Higher Half Direct Map) request.
 #[repr(C)]
 struct LimineHhdmRequest {
     id: [u64; 4],
@@ -90,30 +76,23 @@ struct LimineHhdmResponse {
     offset: u64,
 }
 
-/// RSDP request.
-#[repr(C)]
-struct LimineRsdpRequest {
-    id: [u64; 4],
-    revision: u64,
-    response: *const LimineRsdpResponse,
-}
-unsafe impl Send for LimineRsdpRequest {}
-unsafe impl Sync for LimineRsdpRequest {}
+// Limine requests start marker (MUST be first in .limine_requests section)
+// NOTE: mut statics because Limine writes response pointers into these
+#[used]
+#[link_section = ".limine_requests_start"]
+static mut REQUESTS_START_MARKER: [u64; 4] = [
+    0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf,
+    0x785c6ed015d3e316, 0x181e920a7852b9d9,
+];
 
-#[repr(C)]
-struct LimineRsdpResponse {
-    revision: u64,
-    address: *const u8,
-}
-
-// ---------------------------------------------------------------------------
-// Limine request statics -- the bootloader scans the ELF for these
-// ---------------------------------------------------------------------------
-
-// Request IDs from Limine spec (common prefix + per-feature suffix)
+// Limine base revision marker
 #[used]
 #[link_section = ".limine_requests"]
-static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest {
+static mut BASE_REVISION: [u64; 3] = [0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 2];
+
+#[used]
+#[link_section = ".limine_requests"]
+static mut FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest {
     id: [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0x9d5827dcd881dd75, 0xa3148604f6fab11b],
     revision: 0,
     response: core::ptr::null(),
@@ -121,7 +100,7 @@ static FRAMEBUFFER_REQUEST: LimineFramebufferRequest = LimineFramebufferRequest 
 
 #[used]
 #[link_section = ".limine_requests"]
-static MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
+static mut MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
     id: [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0x67cf3d9d378a806f, 0xe304acdfc50c3c62],
     revision: 0,
     response: core::ptr::null(),
@@ -129,36 +108,290 @@ static MEMMAP_REQUEST: LimineMemmapRequest = LimineMemmapRequest {
 
 #[used]
 #[link_section = ".limine_requests"]
-static HHDM_REQUEST: LimineHhdmRequest = LimineHhdmRequest {
+static mut HHDM_REQUEST: LimineHhdmRequest = LimineHhdmRequest {
     id: [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0x48dcf1cb8ad2b852, 0x63984e959a98244b],
     revision: 0,
     response: core::ptr::null(),
 };
 
+// ---------------------------------------------------------------------------
+// Simple bump frame allocator using Limine memory map
+// ---------------------------------------------------------------------------
+
+use x86_64::structures::paging::{FrameAllocator, PageTable, PhysFrame, Size4KiB};
+use x86_64::PhysAddr;
+use core::sync::atomic::{AtomicU64, Ordering};
+
+static USABLE_START: AtomicU64 = AtomicU64::new(0);
+static USABLE_END: AtomicU64 = AtomicU64::new(0);
+static NEXT_FRAME: AtomicU64 = AtomicU64::new(0);
+static HHDM_OFFSET: AtomicU64 = AtomicU64::new(0);
+
+struct LimineBumpAllocator;
+
+unsafe impl FrameAllocator<Size4KiB> for LimineBumpAllocator {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+        let end = USABLE_END.load(Ordering::SeqCst);
+        loop {
+            let addr = NEXT_FRAME.load(Ordering::SeqCst);
+            if addr >= end { return None; }
+            let next = addr + 4096;
+            if NEXT_FRAME.compare_exchange(addr, next, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                return Some(PhysFrame::containing_address(PhysAddr::new(addr)));
+            }
+        }
+    }
+}
+
+// Limine requests end marker (MUST be last in .limine_requests section)
 #[used]
-#[link_section = ".limine_requests"]
-static RSDP_REQUEST: LimineRsdpRequest = LimineRsdpRequest {
-    id: [0xc7b1dd30df4c8b88, 0x0a82e883a194f07b, 0xc5e77b6b397e7b43, 0x27637845accdcf3c],
-    revision: 0,
-    response: core::ptr::null(),
-};
+#[link_section = ".limine_requests_end"]
+static mut REQUESTS_END_MARKER: [u64; 2] = [0xadc0e0531bb10d03, 0x9572709f31764c62];
 
 // ---------------------------------------------------------------------------
-// Limine entry point
+// Entry point
 // ---------------------------------------------------------------------------
 
-/// Limine entry point -- called by the bootloader after setting up
-/// the higher-half direct map and filling in our request responses.
 #[no_mangle]
 extern "C" fn _start() -> ! {
-    // Delegate to the shared Limine init sequence in the library
-    unsafe { merlion_kernel::limine_init::limine_kernel_init(); }
+    // Ultra-early serial: write directly to COM1 port 0x3F8
+    // This works before ANY initialization, proving _start was called
+    unsafe {
+        // Init COM1: disable interrupts, set baud rate 115200, 8N1
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 1).write(0x00); // disable interrupts
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 3).write(0x80); // DLAB on
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 0).write(0x01); // baud 115200
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 1).write(0x00);
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 3).write(0x03); // 8N1
+        x86_64::instructions::port::Port::<u8>::new(0x3F8 + 2).write(0xC7); // FIFO
+        // Write "OK\n" directly
+        for &b in b"[limine] _start reached!\r\n" {
+            while x86_64::instructions::port::Port::<u8>::new(0x3F8 + 5).read() & 0x20 == 0 {}
+            x86_64::instructions::port::Port::<u8>::new(0x3F8).write(b);
+        }
+    }
+
+    // Phase 1: Serial output (works without memory setup)
+    merlion_kernel::serial::SERIAL1.lock().init();
+    merlion_kernel::serial_println!("MerlionOS v77.0.0 — Born for AI. Built by AI.");
+    merlion_kernel::serial_println!("[limine] Booting via Limine UEFI...");
+
+    // Phase 2: Read HHDM offset from Limine response
+    let hhdm_offset = unsafe {
+        let resp = (*(&raw const HHDM_REQUEST)).response;
+        if resp.is_null() {
+            merlion_kernel::serial_println!("[limine] ERROR: no HHDM response!");
+            halt();
+        }
+        let offset = (*resp).offset;
+        merlion_kernel::serial_println!("[limine] HHDM offset: {:#x}", offset);
+        HHDM_OFFSET.store(offset, Ordering::SeqCst);
+        offset
+    };
+
+    // Phase 3: Read memory map, find largest usable region
+    unsafe {
+        let resp = (*(&raw const MEMMAP_REQUEST)).response;
+        if resp.is_null() {
+            merlion_kernel::serial_println!("[limine] ERROR: no memory map response!");
+            halt();
+        }
+        let count = (*resp).entry_count as usize;
+        let entries = (*resp).entries;
+        merlion_kernel::serial_println!("[limine] Memory map: {} entries", count);
+
+        let mut best_base: u64 = 0;
+        let mut best_len: u64 = 0;
+        let mut total_usable: u64 = 0;
+
+        for i in 0..count {
+            let entry = *entries.add(i);
+            let base = (*entry).base;
+            let len = (*entry).length;
+            let etype = (*entry).entry_type;
+
+            if etype == LIMINE_MEMMAP_USABLE {
+                total_usable += len;
+                // Pick the largest usable region (skip first 1MB to be safe)
+                if len > best_len && base >= 0x10_0000 {
+                    best_base = base;
+                    best_len = len;
+                }
+            }
+        }
+
+        merlion_kernel::serial_println!("[limine] Total usable: {} MiB", total_usable / (1024*1024));
+        merlion_kernel::serial_println!("[limine] Best region: {:#x}..{:#x} ({} MiB)",
+            best_base, best_base + best_len, best_len / (1024*1024));
+
+        USABLE_START.store(best_base, Ordering::SeqCst);
+        USABLE_END.store(best_base + best_len, Ordering::SeqCst);
+        NEXT_FRAME.store(best_base, Ordering::SeqCst);
+    }
+
+    // Phase 4: CPU tables
+    merlion_kernel::gdt::init();
+    merlion_kernel::serial_println!("[ok] GDT loaded");
+
+    merlion_kernel::timer::init();
+    merlion_kernel::serial_println!("[ok] PIT configured");
+
+    merlion_kernel::interrupts::init();
+    merlion_kernel::serial_println!("[ok] IDT + interrupts enabled");
+
+    // Phase 5: Page table + heap
+    let phys_mem_virt = VirtAddr::new(hhdm_offset);
+    unsafe {
+        use x86_64::registers::control::Cr3;
+        let (frame, _) = Cr3::read();
+        let phys = frame.start_address();
+        let virt = phys_mem_virt + phys.as_u64();
+        let table: &mut PageTable = &mut *virt.as_mut_ptr();
+        let mut mapper = x86_64::structures::paging::OffsetPageTable::new(table, phys_mem_virt);
+
+        merlion_kernel::serial_println!("[ok] Page table mapped via HHDM");
+
+        let mut fa = LimineBumpAllocator;
+        merlion_kernel::allocator::init(&mut mapper, &mut fa)
+            .expect("heap init failed");
+        merlion_kernel::serial_println!("[ok] Heap ready ({}K)", merlion_kernel::allocator::HEAP_SIZE / 1024);
+    }
+
+    // Phase 6: Framebuffer
+    unsafe {
+        let resp = (*(&raw const FRAMEBUFFER_REQUEST)).response;
+        if !resp.is_null() && (*resp).framebuffer_count > 0 {
+            let fb = *(*resp).framebuffers;
+            merlion_kernel::serial_println!("[limine] Framebuffer: {}x{} bpp={} at {:p}",
+                (*fb).width, (*fb).height, (*fb).bpp, (*fb).address);
+        } else {
+            merlion_kernel::serial_println!("[limine] No framebuffer available");
+        }
+    }
+
+    // Phase 7: All subsystems
+    merlion_kernel::task::init();
+    merlion_kernel::serial_println!("[ok] Task system");
+
+    merlion_kernel::vfs::init();
+    merlion_kernel::serial_println!("[ok] VFS");
+
+    merlion_kernel::driver::init();
+    merlion_kernel::module::init();
+    merlion_kernel::ksyms::init();
+    merlion_kernel::slab::init();
+    merlion_kernel::blkdev::init();
+    merlion_kernel::fd::init();
+    merlion_kernel::env::init();
+    merlion_kernel::serial_println!("[ok] Core subsystems");
+
+    merlion_kernel::smp::init();
+    merlion_kernel::apic_timer::init();
+    merlion_kernel::virtio_blk::init();
+    merlion_kernel::virtio_net::init();
+    merlion_kernel::ahci::init();
+    merlion_kernel::nvme::init();
+    merlion_kernel::xhci::init();
+    merlion_kernel::e1000e::init();
+    merlion_kernel::netstack::init();
+    merlion_kernel::usb_hid::init();
+    merlion_kernel::semfs::init();
+    merlion_kernel::serial_println!("[ok] Hardware drivers");
+
+    merlion_kernel::security::init();
+    merlion_kernel::capability::init();
+    merlion_kernel::structured_log::init();
+    merlion_kernel::log_rotate::init();
+    merlion_kernel::remote_log::init();
+    merlion_kernel::panic_recover::init();
+    merlion_kernel::serial_println!("[ok] Security + logging");
+
+    merlion_kernel::http_middleware::init();
+    merlion_kernel::scp::init();
+    merlion_kernel::dns_zone::init();
+    merlion_kernel::mqtt_broker::init();
+    merlion_kernel::ws_server::init();
+    merlion_kernel::serial_println!("[ok] Network services");
+
+    merlion_kernel::nn_inference::init();
+    merlion_kernel::vector_store::init();
+    merlion_kernel::ai_workflow::init();
+    merlion_kernel::self_evolve::init();
+    merlion_kernel::serial_println!("[ok] AI platform");
+
+    merlion_kernel::gpu::init();
+    merlion_kernel::bluetooth::init();
+    merlion_kernel::dfs::init();
+    merlion_kernel::rt_sched::init();
+    merlion_kernel::microkernel::init();
+    merlion_kernel::audio_engine::init();
+    merlion_kernel::midi::init();
+    merlion_kernel::userland::init();
+    merlion_kernel::libc::init();
+    merlion_kernel::widget::init();
+    merlion_kernel::dialog::init();
+    merlion_kernel::ipv6::init();
+    merlion_kernel::https_server::init();
+    merlion_kernel::pkg_registry::init();
+    merlion_kernel::build_system::init();
+    merlion_kernel::serial_println!("[ok] Extended subsystems");
+
+    merlion_kernel::ext4::init();
+    merlion_kernel::tcp_congestion::init();
+    merlion_kernel::wasi::init();
+    merlion_kernel::veth::init();
+    merlion_kernel::bridge::init();
+    merlion_kernel::elf_runtime::init();
+    merlion_kernel::debuginfo::init();
+    merlion_kernel::crypto_ext::init();
+    merlion_kernel::procfs::init();
+    merlion_kernel::sysfs::init();
+    merlion_kernel::tmpfs::init();
+    merlion_kernel::pipe2::init();
+    merlion_kernel::serial_println!("[ok] Filesystems + crypto");
+
+    merlion_kernel::ai_proxy::init();
+    merlion_kernel::agent::init();
+    merlion_kernel::acl::init();
+    merlion_kernel::power_mgmt::init();
+    merlion_kernel::hda::init();
+    merlion_kernel::wifi::init();
+    merlion_kernel::kconfig::load();
+    merlion_kernel::kconfig_ext::init();
+    merlion_kernel::netdiag::init();
+    merlion_kernel::vmm::init();
+    merlion_kernel::ipc_ext::init();
+    merlion_kernel::perf_events::init();
+    merlion_kernel::cgroup::init();
+    merlion_kernel::vim::init();
+    merlion_kernel::bash::init();
+    merlion_kernel::script::create_default_init();
+    merlion_kernel::serial_println!("[ok] All subsystems initialized");
+
+    // Phase 8: RTC + login
+    let dt = merlion_kernel::rtc::read();
+    merlion_kernel::serial_println!("[ok] RTC: {}", dt);
+    merlion_kernel::serial_println!("Kernel initialization complete (Limine UEFI).");
+
+    merlion_kernel::login::show();
+    while merlion_kernel::login::is_logging_in() {
+        x86_64::instructions::hlt();
+    }
+
+    merlion_kernel::serial_println!("Shell active.");
+    merlion_kernel::shell::prompt();
+
+    loop { x86_64::instructions::hlt(); }
+}
+
+fn halt() -> ! {
+    loop { x86_64::instructions::hlt(); }
 }
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     x86_64::instructions::interrupts::disable();
-    merlion_kernel::serial_println!("\n\x1b[31m══ KERNEL PANIC ══\x1b[0m");
+    merlion_kernel::serial_println!("\n══ KERNEL PANIC ══");
     merlion_kernel::serial_println!("{}", info);
-    loop { x86_64::instructions::hlt(); }
+    halt()
 }

@@ -1,5 +1,6 @@
 /* Limine linker script for MerlionOS kernel.
  * Limine expects the kernel loaded at the higher half.
+ * Request markers must be contiguous: start_marker, requests, end_marker.
  */
 ENTRY(_start)
 
@@ -21,10 +22,13 @@ SECTIONS {
         *(.rodata .rodata.*)
     } :rodata
 
+    /* Limine requests section — in data (writable) so Limine can fill response ptrs */
     . = ALIGN(4096);
     .limine_requests : {
+        KEEP(*(.limine_requests_start))
         KEEP(*(.limine_requests))
-    } :rodata
+        KEEP(*(.limine_requests_end))
+    } :data
 
     . = ALIGN(4096);
     .data : {
