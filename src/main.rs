@@ -126,6 +126,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     mmap::init();
     proc_mgr::init();
     elf_exec::init();
+    bash::init();
     autocomplete::init();
     installer::init();
     multi_user::init();
@@ -137,6 +138,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     vmm::init();
     ipc_ext::init();
     perf_events::init();
+    cgroup::init();
     vim::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");

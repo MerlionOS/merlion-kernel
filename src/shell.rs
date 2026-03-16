@@ -2574,6 +2574,49 @@ pub fn dispatch(cmd: &str) {
         "flamegraph" => { println!("{}", crate::perf_events::generate_flamegraph()); }
         "topdown" => { println!("{}", crate::perf_events::topdown_analysis()); }
 
+        "cgroup-list" => { println!("{}", crate::cgroup::list_cgroups()); }
+        "cgroup-tree" => { println!("{}", crate::cgroup::cgroup_tree()); }
+        cmd if cmd.starts_with("cgroup-info ") => {
+            let path = cmd.trim_start_matches("cgroup-info ").trim();
+            match crate::cgroup::cgroup_info(path) {
+                Ok(info) => println!("{}", info),
+                Err(e) => println!("cgroup-info: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("cgroup-create ") => {
+            let path = cmd.trim_start_matches("cgroup-create ").trim();
+            match crate::cgroup::create_cgroup(path) {
+                Ok(id) => println!("cgroup created: {} (id={})", path, id),
+                Err(e) => println!("cgroup-create: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("cgroup-add ") => {
+            let rest = cmd.trim_start_matches("cgroup-add ").trim();
+            let parts: alloc::vec::Vec<&str> = rest.splitn(2, ' ').collect();
+            if parts.len() < 2 {
+                println!("usage: cgroup-add <path> <pid>");
+            } else {
+                let cg_path = parts[0];
+                if let Ok(pid) = parts[1].trim().parse::<usize>() {
+                    match crate::cgroup::add_process(cg_path, pid) {
+                        Ok(()) => println!("pid {} added to {}", pid, cg_path),
+                        Err(e) => println!("cgroup-add: {}", e),
+                    }
+                } else {
+                    println!("cgroup-add: invalid pid");
+                }
+            }
+        }
+
+        "bash" => crate::bash::cmd_bash(),
+        "zsh" => crate::bash::cmd_zsh(),
+        "sh" => crate::bash::cmd_sh(),
+        _ if cmd.starts_with("set ") => crate::bash::cmd_set(&cmd[4..]),
+        "set" => crate::bash::cmd_set(""),
+        _ if cmd.starts_with("let ") => crate::bash::cmd_let(&cmd[4..]),
+        _ if cmd.starts_with("type ") => crate::bash::cmd_type(&cmd[5..]),
+        _ if cmd.starts_with("export ") => crate::bash::cmd_export(&cmd[7..]),
+
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {
