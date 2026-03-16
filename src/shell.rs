@@ -307,6 +307,16 @@ pub fn dispatch(cmd: &str) {
             println!("  seccomp <pid> - syscall filter info");
             println!("  audit      - security audit summary");
             println!("  mkdir <p>  - create directory");
+            println!("Logging commands:");
+            println!("  logquery [N] - last N structured log entries");
+            println!("  logjson [N]  - log entries as JSON");
+            println!("  logfilter <l> - filter by severity level");
+            println!("  loglevel <l> - set minimum log level");
+            println!("  auditlog [N] - audit trail entries");
+            println!("  auditstats   - audit event statistics");
+            println!("  logrotate    - force log rotation");
+            println!("  logstatus    - log rotation status");
+            println!("  remotelog    - remote syslog status/config");
             println!("Hardware:");
             println!("  wget <url> - fetch URL via real TCP connection");
             println!("  ifup       - DHCP discover sequence");
@@ -1436,6 +1446,93 @@ pub fn dispatch(cmd: &str) {
                 }
             });
         }
+
+        // --- Logging & audit commands ---
+        cmd if cmd == "logquery" || cmd.starts_with("logquery ") => {
+            let count = cmd.strip_prefix("logquery ").and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(20);
+            let entries = crate::structured_log::query(count);
+            for entry in &entries {
+                println!("{}", crate::structured_log::to_text(entry));
+            }
+            if entries.is_empty() { println!("(no entries)"); }
+        }
+        cmd if cmd == "logjson" || cmd.starts_with("logjson ") => {
+            let count = cmd.strip_prefix("logjson ").and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(10);
+            let entries = crate::structured_log::query(count);
+            println!("{}", crate::structured_log::format_json(&entries));
+        }
+        cmd if cmd.starts_with("logfilter ") => {
+            let level = cmd.strip_prefix("logfilter ").unwrap().trim();
+            let sev = match level {
+                "emerg" | "emergency" => crate::structured_log::Severity::Emergency,
+                "alert" => crate::structured_log::Severity::Alert,
+                "crit" | "critical" => crate::structured_log::Severity::Critical,
+                "err" | "error" => crate::structured_log::Severity::Error,
+                "warn" | "warning" => crate::structured_log::Severity::Warning,
+                "notice" => crate::structured_log::Severity::Notice,
+                "info" => crate::structured_log::Severity::Info,
+                "debug" => crate::structured_log::Severity::Debug,
+                _ => { println!("logfilter: unknown level '{}'", level); return; }
+            };
+            let entries = crate::structured_log::query_by_severity(sev, 50);
+            for entry in &entries {
+                println!("{}", crate::structured_log::to_text(entry));
+            }
+            if entries.is_empty() { println!("(no entries at {} level)", level); }
+        }
+        cmd if cmd.starts_with("loglevel ") => {
+            let level = cmd.strip_prefix("loglevel ").unwrap().trim();
+            let sev = match level {
+                "emerg" => crate::structured_log::Severity::Emergency,
+                "alert" => crate::structured_log::Severity::Alert,
+                "crit" => crate::structured_log::Severity::Critical,
+                "err" | "error" => crate::structured_log::Severity::Error,
+                "warn" => crate::structured_log::Severity::Warning,
+                "notice" => crate::structured_log::Severity::Notice,
+                "info" => crate::structured_log::Severity::Info,
+                "debug" => crate::structured_log::Severity::Debug,
+                _ => { println!("loglevel: unknown level"); return; }
+            };
+            crate::structured_log::set_min_severity(sev);
+            println!("Log level set to {}", level);
+        }
+        cmd if cmd == "auditlog" || cmd.starts_with("auditlog ") => {
+            let count = cmd.strip_prefix("auditlog ").and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(20);
+            let entries = crate::structured_log::audit_trail(count);
+            for entry in &entries {
+                println!("{}", crate::structured_log::to_text(entry));
+            }
+            if entries.is_empty() { println!("(no audit entries)"); }
+        }
+        "logrotate" => {
+            crate::log_rotate::rotate_all();
+            println!("All logs rotated.");
+        }
+        "logstatus" => {
+            println!("{}", crate::log_rotate::status());
+        }
+        "remotelog" => {
+            println!("{}", crate::remote_log::status());
+        }
+        cmd if cmd.starts_with("remotelog ") => {
+            let ip_str = cmd.strip_prefix("remotelog ").unwrap().trim();
+            // Parse IP a.b.c.d
+            let parts: alloc::vec::Vec<&str> = ip_str.split('.').collect();
+            if parts.len() == 4 {
+                let a = parts[0].parse::<u8>().unwrap_or(0);
+                let b = parts[1].parse::<u8>().unwrap_or(0);
+                let c = parts[2].parse::<u8>().unwrap_or(0);
+                let d = parts[3].parse::<u8>().unwrap_or(0);
+                crate::remote_log::set_server([a, b, c, d]);
+                println!("Remote syslog server set to {}", ip_str);
+            } else {
+                println!("Usage: remotelog <ip>  (e.g. remotelog 192.168.1.100)");
+            }
+        }
+        "auditstats" => {
+            println!("{}", crate::structured_log::audit_stats());
+        }
+
         "clear" => crate::vga::WRITER.lock().clear(),
         // --- AI commands ---
         cmd if cmd.starts_with("ai ") => {
