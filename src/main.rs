@@ -113,6 +113,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     elf_runtime::init();
     debuginfo::init();
     crypto_ext::init();
+    procfs::init();
+    sysfs::init();
+    tmpfs::init();
+    pipe2::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();

@@ -443,6 +443,17 @@ pub fn dispatch(cmd: &str) {
             println!("  aes-demo     - AES encryption demo");
             println!("  rsa-demo     - RSA encryption demo");
             println!("  pkg-stats    - package registry stats");
+            println!("Kernel internals:");
+            println!("  proc <path>  - read /proc file");
+            println!("  procfs-list  - list /proc entries");
+            println!("  sysfs <path> - read /sys attribute");
+            println!("  dev-tree     - device tree");
+            println!("  dev-info <id> - device details");
+            println!("  dev-stats    - device statistics");
+            println!("  tmpfs-info   - tmpfs status");
+            println!("  tmpfs-stats  - tmpfs statistics");
+            println!("  pipes        - active pipes");
+            println!("  mkfifo <p>   - create named pipe");
         }
         "info" => {
             let mem = memory::stats();
@@ -2267,6 +2278,38 @@ pub fn dispatch(cmd: &str) {
             println!("  match: {}", msg == dec);
         }
         "pkg-stats" => { println!("{}", crate::pkg_registry::registry_stats()); }
+        cmd if cmd.starts_with("proc /") => {
+            let path = cmd.strip_prefix("proc ").unwrap().trim();
+            match crate::procfs::read(path) {
+                Some(content) => println!("{}", content),
+                None => println!("proc: {} not found", path),
+            }
+        }
+        "procfs-list" => { println!("{}", crate::procfs::list_all()); }
+        cmd if cmd.starts_with("sysfs ") => {
+            let path = cmd.strip_prefix("sysfs ").unwrap().trim();
+            match crate::sysfs::sysfs_read(path) {
+                Some(content) => println!("{}", content),
+                None => println!("sysfs: {} not found", path),
+            }
+        }
+        "dev-tree" => { println!("{}", crate::sysfs::device_tree()); }
+        cmd if cmd.starts_with("dev-info ") => {
+            if let Ok(id) = cmd.strip_prefix("dev-info ").unwrap().trim().parse::<u32>() {
+                println!("{}", crate::sysfs::device_info(id));
+            } else { println!("Usage: dev-info <id>"); }
+        }
+        "dev-stats" => { println!("{}", crate::sysfs::device_stats()); }
+        "tmpfs-info" => { println!("{}", crate::tmpfs::tmpfs_info()); }
+        "tmpfs-stats" => { println!("{}", crate::tmpfs::tmpfs_stats()); }
+        "pipes" => { println!("{}", crate::pipe2::pipe_info()); }
+        cmd if cmd.starts_with("mkfifo ") => {
+            let path = cmd.strip_prefix("mkfifo ").unwrap().trim();
+            match crate::pipe2::create_fifo(path) {
+                Ok(id) => println!("Created FIFO {} (id: {})", path, id),
+                Err(e) => println!("mkfifo: {}", e),
+            }
+        }
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {
