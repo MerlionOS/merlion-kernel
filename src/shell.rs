@@ -340,6 +340,18 @@ pub fn dispatch(cmd: &str) {
             println!("  gptinfo    - GPT partition table (virtio disk)");
             println!("  powerinfo  - power management status");
             println!("  nicsend <msg> - send raw UDP via NIC");
+            println!("Stability commands:");
+            println!("  integrity  - full system integrity check");
+            println!("  crashlog   - crash history");
+            println!("  crashstats - crash/recovery stats");
+            println!("  redzone    - memory red zone check");
+            println!("  recovery on|off - panic recovery toggle");
+            println!("  fuzz [N]   - run all fuzz tests");
+            println!("  fuzz-vfs [N] - fuzz VFS subsystem");
+            println!("  fuzz-security [N] - fuzz security");
+            println!("  fuzz-ipc [N] - fuzz IPC channels");
+            println!("  fuzz-parsers [N] - fuzz parsers");
+            println!("  fuzz-seed <N> - set PRNG seed");
         }
         "info" => {
             let mem = memory::stats();
@@ -1898,6 +1910,77 @@ pub fn dispatch(cmd: &str) {
         }
         "alloc-track pids" => {
             println!("{}", crate::alloc_track::per_pid_stats());
+        }
+        "crashlog" => {
+            println!("{}", crate::panic_recover::crash_log());
+        }
+        "crashstats" => {
+            println!("{}", crate::panic_recover::stats());
+        }
+        "integrity" => {
+            println!("{}", crate::panic_recover::integrity_check());
+        }
+        "redzone" => {
+            println!("{}", crate::panic_recover::red_zone_status());
+            let violations = crate::panic_recover::check_red_zones();
+            if violations.is_empty() {
+                println!("All red zones intact.");
+            } else {
+                for (addr, kind) in &violations {
+                    println!("  VIOLATION at 0x{:x}: {}", addr, kind);
+                }
+            }
+        }
+        "recovery on" => {
+            crate::panic_recover::set_recovery(true);
+            println!("Panic recovery enabled.");
+        }
+        "recovery off" => {
+            crate::panic_recover::set_recovery(false);
+            println!("Panic recovery disabled.");
+        }
+        cmd if cmd == "fuzz" || cmd.starts_with("fuzz ") => {
+            let count = cmd.strip_prefix("fuzz ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(100);
+            println!("Running fuzz tests ({} iterations per test)...", count);
+            println!("{}", crate::fuzz::fuzz_all(count));
+        }
+        cmd if cmd == "fuzz-vfs" || cmd.starts_with("fuzz-vfs ") => {
+            let count = cmd.strip_prefix("fuzz-vfs ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(100);
+            let result = crate::fuzz::fuzz_vfs(count);
+            println!("{}", crate::fuzz::format_result(&result));
+        }
+        cmd if cmd == "fuzz-security" || cmd.starts_with("fuzz-security ") => {
+            let count = cmd.strip_prefix("fuzz-security ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(100);
+            let result = crate::fuzz::fuzz_security(count);
+            println!("{}", crate::fuzz::format_result(&result));
+        }
+        cmd if cmd == "fuzz-ipc" || cmd.starts_with("fuzz-ipc ") => {
+            let count = cmd.strip_prefix("fuzz-ipc ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(100);
+            let result = crate::fuzz::fuzz_ipc(count);
+            println!("{}", crate::fuzz::format_result(&result));
+        }
+        cmd if cmd == "fuzz-parsers" || cmd.starts_with("fuzz-parsers ") => {
+            let count = cmd.strip_prefix("fuzz-parsers ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(100);
+            let result = crate::fuzz::fuzz_parsers(count);
+            println!("{}", crate::fuzz::format_result(&result));
+        }
+        cmd if cmd.starts_with("fuzz-seed ") => {
+            if let Ok(seed) = cmd.strip_prefix("fuzz-seed ").unwrap().trim().parse::<u64>() {
+                crate::fuzz::seed(seed);
+                println!("Fuzz PRNG seed set to {}", seed);
+            } else {
+                println!("Usage: fuzz-seed <number>");
+            }
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

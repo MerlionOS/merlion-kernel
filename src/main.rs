@@ -80,6 +80,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     structured_log::init();
     log_rotate::init();
     remote_log::init();
+    panic_recover::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
