@@ -10,8 +10,8 @@ use linked_list_allocator::LockedHeap;
 
 /// Heap starts at a fixed virtual address above the kernel.
 pub const HEAP_START: usize = 0x4444_4444_0000;
-/// 64 KiB heap — plenty for Phase 3.
-pub const HEAP_SIZE: usize = 64 * 1024;
+/// 4 MiB heap — needed for 243 modules with Vec/String/Mutex allocations.
+pub const HEAP_SIZE: usize = 4 * 1024 * 1024;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();

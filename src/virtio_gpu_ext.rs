@@ -799,13 +799,8 @@ pub fn init() {
     if srv.initialised {
         return;
     }
-    let w = srv.current_mode.width;
-    let h = srv.current_mode.height;
-    let front_id = srv.alloc_resource_id();
-    let back_id = srv.alloc_resource_id();
-    srv.front_buffer = Some(Framebuffer::new(front_id, w, h));
-    srv.back_buffer = Some(Framebuffer::new(back_id, w, h));
-    srv.cursor.set_default();
+    // Don't allocate framebuffers on init — they're huge (width*height*4 bytes each)
+    // Allocate lazily when first display command is issued
     srv.initialised = true;
-    crate::serial_println!("virtio-gpu: display server initialised at {}x{}", w, h);
+    crate::serial_println!("[virtio-gpu] display server ready (framebuffers allocated on demand)");
 }
