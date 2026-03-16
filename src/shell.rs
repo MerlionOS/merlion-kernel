@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, http, dhcp, gpt, power, forth, watch, wget, screensaver, acl, power_mgmt};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -2308,6 +2308,58 @@ pub fn dispatch(cmd: &str) {
             match crate::pipe2::create_fifo(path) {
                 Ok(id) => println!("Created FIFO {} (id: {})", path, id),
                 Err(e) => println!("mkfifo: {}", e),
+            }
+        }
+        "acl-info" => { println!("{}", crate::acl::acl_info()); }
+        "acl-stats" => { println!("{}", crate::acl::acl_stats()); }
+        "acl-list" => { println!("{}", crate::acl::list_acls()); }
+        "acl-audit" => { println!("{}", crate::acl::audit_log(20)); }
+        cmd if cmd.starts_with("setacl ") => {
+            let args = cmd.strip_prefix("setacl ").unwrap().trim();
+            match crate::acl::parse_setacl_cmd(args) {
+                Ok(()) => println!("ACL set successfully."),
+                Err(e) => println!("setacl: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("getacl ") => {
+            let path = cmd.strip_prefix("getacl ").unwrap().trim();
+            println!("{}", crate::acl::getacl(path));
+        }
+        cmd if cmd.starts_with("rmacl ") => {
+            let path = cmd.strip_prefix("rmacl ").unwrap().trim();
+            if crate::acl::removeacl(path) {
+                println!("ACL removed for {}", path);
+            } else {
+                println!("No ACL found for {}", path);
+            }
+        }
+        "power-info" => { println!("{}", crate::power_mgmt::power_info()); }
+        "power-stats" => { println!("{}", crate::power_mgmt::power_stats()); }
+        "battery" => { println!("{}", crate::power_mgmt::battery_info()); }
+        "thermal" => { println!("{}", crate::power_mgmt::thermal_info()); }
+        "pstates" => { println!("{}", crate::power_mgmt::list_pstates()); }
+        "cstates" => { println!("{}", crate::power_mgmt::cstate_info()); }
+        "profiles" => { println!("{}", crate::power_mgmt::list_profiles()); }
+        "energy" => { println!("{}", crate::power_mgmt::energy_info()); }
+        "acpi-events" => { println!("{}", crate::power_mgmt::acpi_event_log()); }
+        cmd if cmd.starts_with("power-profile ") => {
+            let name = cmd.strip_prefix("power-profile ").unwrap().trim();
+            match crate::power_mgmt::PowerProfile::from_str(name) {
+                Some(profile) => {
+                    crate::power_mgmt::set_profile(profile);
+                    println!("Power profile set to {}", profile.name());
+                }
+                None => println!("Unknown profile '{}'. Use: performance, balanced, powersaver, custom", name),
+            }
+        }
+        cmd if cmd.starts_with("pstate ") => {
+            let id_str = cmd.strip_prefix("pstate ").unwrap().trim();
+            match id_str.parse::<u8>() {
+                Ok(id) => match crate::power_mgmt::set_pstate(id) {
+                    Ok(()) => println!("P-state set to P{}", id),
+                    Err(e) => println!("pstate: {}", e),
+                },
+                Err(_) => println!("Usage: pstate <0-4>"),
             }
         }
         _ => {

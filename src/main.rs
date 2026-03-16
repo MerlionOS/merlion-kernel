@@ -119,6 +119,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     pipe2::init();
     ai_proxy::init();
     agent::init();
+    acl::init();
+    power_mgmt::init();
     kconfig::load();
     script::create_default_init();
     println!("[ok] AI subsystem ready");

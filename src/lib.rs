@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+pub mod acl;
 pub mod acpi;
 pub mod acpi_tables;
 pub mod agent;
@@ -133,6 +134,7 @@ pub mod physics;
 pub mod pkg;
 pub mod pkg_registry;
 pub mod power;
+pub mod power_mgmt;
 pub mod procfs;
 pub mod process;
 pub mod profiler;
