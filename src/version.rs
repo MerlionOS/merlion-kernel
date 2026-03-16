@@ -2,14 +2,14 @@
 /// Centralized version string used by neofetch, uname, /proc/version, etc.
 
 pub const NAME: &str = "MerlionOS";
-pub const VERSION: &str = "28.0.0";
+pub const VERSION: &str = "29.0.0";
 pub const CODENAME: &str = "Merlion";
 pub const ARCH: &str = "x86_64";
 pub const SLOGAN: &str = "Born for AI. Built by AI.";
 pub const SLOGAN_CN: &str = "生于AI，成于AI";
 
-pub const MODULES: usize = 173;
-pub const COMMANDS: usize = 161;
+pub const MODULES: usize = 175;
+pub const COMMANDS: usize = 175;
 
 /// Repository URL.
 pub const REPO: &str = "https://github.com/MerlionOS/merlion-kernel";
@@ -18,12 +18,12 @@ pub const LICENSE: &str = "MIT";
 
 /// Full version string.
 pub fn full() -> &'static str {
-    concat!("MerlionOS v28.0.0 (", "x86_64", ")")
+    concat!("MerlionOS v29.0.0 (", "x86_64", ")")
 }
 
 /// One-line banner.
 pub fn banner() -> &'static str {
-    "MerlionOS v28.0.0 — Born for AI. Built by AI."
+    "MerlionOS v29.0.0 — Born for AI. Built by AI."
 }
 
 /// Build info for display.

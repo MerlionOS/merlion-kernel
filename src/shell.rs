@@ -317,6 +317,17 @@ pub fn dispatch(cmd: &str) {
             println!("  logrotate    - force log rotation");
             println!("  logstatus    - log rotation status");
             println!("  remotelog    - remote syslog status/config");
+            println!("Profiling commands:");
+            println!("  perf         - all performance info");
+            println!("  perf stat    - performance counters");
+            println!("  perf record [i] - start CPU profiling");
+            println!("  perf stop    - stop and show profile");
+            println!("  perf top     - profile analysis");
+            println!("  syscall-stats [on|off] - syscall latency");
+            println!("  alloc-track [on|off] - allocation tracker");
+            println!("  alloc-track leaks - potential leaks");
+            println!("  alloc-track events - recent allocations");
+            println!("  alloc-track pids - per-PID alloc stats");
             println!("Hardware:");
             println!("  wget <url> - fetch URL via real TCP connection");
             println!("  ifup       - DHCP discover sequence");
@@ -1814,6 +1825,79 @@ pub fn dispatch(cmd: &str) {
         "tcppoll" => {
             let n = tcp_real::poll_incoming();
             println!("Processed {} incoming TCP segment(s).", n);
+        }
+        // --- Profiling commands ---
+        "perf" => {
+            // Perf counters
+            let counters = crate::profiler::perf_stat();
+            println!("{}", crate::profiler::format_perf_counters(&counters));
+            // Syscall stats
+            if crate::syscall_stats::is_enabled() {
+                println!("{}", crate::syscall_stats::report());
+            }
+            // Alloc tracker
+            if crate::alloc_track::is_active() {
+                println!("{}", crate::alloc_track::stats());
+            }
+        }
+        "perf stat" => {
+            let counters = crate::profiler::perf_stat();
+            println!("{}", crate::profiler::format_perf_counters(&counters));
+        }
+        cmd if cmd == "perf record" || cmd.starts_with("perf record ") => {
+            let interval = cmd.strip_prefix("perf record ")
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .unwrap_or(1);
+            crate::profiler::start_profiling(interval);
+            println!("CPU profiling started (interval: {} ticks)", interval);
+        }
+        "perf stop" => {
+            let session = crate::profiler::stop_profiling();
+            let report = crate::profiler::analyze(&session);
+            println!("{}", crate::profiler::format_report(&report));
+        }
+        "perf top" => {
+            let session = crate::profiler::stop_profiling();
+            if session.samples.is_empty() {
+                println!("No samples collected. Use 'perf record' first.");
+            } else {
+                let report = crate::profiler::analyze(&session);
+                println!("{}", crate::profiler::format_report(&report));
+            }
+        }
+        "syscall-stats" => {
+            println!("{}", crate::syscall_stats::report());
+        }
+        "syscall-stats on" => {
+            crate::syscall_stats::enable();
+            println!("Syscall statistics enabled.");
+        }
+        "syscall-stats off" => {
+            crate::syscall_stats::disable();
+            println!("Syscall statistics disabled.");
+        }
+        "alloc-track" => {
+            println!("{}", crate::alloc_track::stats());
+        }
+        "alloc-track on" => {
+            crate::alloc_track::start();
+            println!("Allocation tracking started.");
+        }
+        "alloc-track off" => {
+            crate::alloc_track::stop();
+            println!("Allocation tracking stopped.");
+        }
+        "alloc-track leaks" => {
+            println!("{}", crate::alloc_track::leaks());
+        }
+        cmd if cmd == "alloc-track events" || cmd.starts_with("alloc-track events ") => {
+            let count = cmd.strip_prefix("alloc-track events ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(20);
+            println!("{}", crate::alloc_track::recent_events(count));
+        }
+        "alloc-track pids" => {
+            println!("{}", crate::alloc_track::per_pid_stats());
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

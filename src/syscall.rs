@@ -55,6 +55,9 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, _arg3: u64) {
         crate::capability::FilterAction::Allow => {}
     }
 
+    // Syscall latency tracking
+    let stats_start = crate::syscall_stats::begin();
+
     match syscall_num {
         SYS_WRITE => {
             let buf = arg1 as *const u8;
@@ -146,4 +149,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, _arg3: u64) {
             serial_println!("[syscall] unknown syscall {}", syscall_num);
         }
     }
+
+    // Record syscall latency
+    crate::syscall_stats::end(syscall_num, stats_start);
 }
