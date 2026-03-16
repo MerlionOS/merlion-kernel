@@ -352,6 +352,22 @@ pub fn dispatch(cmd: &str) {
             println!("  fuzz-ipc [N] - fuzz IPC channels");
             println!("  fuzz-parsers [N] - fuzz parsers");
             println!("  fuzz-seed <N> - set PRNG seed");
+            println!("Network services:");
+            println!("  http-stats   - HTTP server statistics");
+            println!("  http-log [N] - HTTP access log");
+            println!("  http-mw      - list HTTP middleware");
+            println!("  ssh-sessions - active SSH sessions");
+            println!("  ssh-stats    - SSH statistics");
+            println!("  scp-list     - SCP transfer history");
+            println!("  dns-zones    - list DNS zones");
+            println!("  dns-zone <d> - show zone details");
+            println!("  dns-cache    - DNS cache stats");
+            println!("  mqtt-stats   - MQTT broker statistics");
+            println!("  mqtt-clients - MQTT connected clients");
+            println!("  mqtt-retained - MQTT retained messages");
+            println!("  ws-conns     - WebSocket connections");
+            println!("  ws-rooms     - WebSocket rooms");
+            println!("  ws-stats     - WebSocket statistics");
         }
         "info" => {
             let mem = memory::stats();
@@ -1981,6 +1997,55 @@ pub fn dispatch(cmd: &str) {
             } else {
                 println!("Usage: fuzz-seed <number>");
             }
+        }
+        "http-stats" => {
+            println!("{}", crate::http_middleware::server_stats());
+        }
+        cmd if cmd == "http-log" || cmd.starts_with("http-log ") => {
+            let count = cmd.strip_prefix("http-log ")
+                .and_then(|s| s.trim().parse::<usize>().ok())
+                .unwrap_or(20);
+            println!("{}", crate::http_middleware::format_access_log(count));
+        }
+        "http-mw" => {
+            println!("{}", crate::http_middleware::list_middleware());
+        }
+        "ssh-sessions" => {
+            println!("{}", crate::scp::list_sessions());
+        }
+        "ssh-stats" => {
+            println!("{}", crate::scp::session_stats());
+        }
+        "scp-list" => {
+            println!("{}", crate::scp::list_transfers());
+        }
+        "dns-zones" => {
+            println!("{}", crate::dns_zone::list_zones());
+        }
+        cmd if cmd.starts_with("dns-zone ") => {
+            let domain = cmd.strip_prefix("dns-zone ").unwrap().trim();
+            println!("{}", crate::dns_zone::zone_info(domain));
+        }
+        "dns-cache" => {
+            println!("{}", crate::dns_zone::cache_stats());
+        }
+        "mqtt-stats" => {
+            println!("{}", crate::mqtt_broker::broker_stats());
+        }
+        "mqtt-clients" => {
+            println!("{}", crate::mqtt_broker::list_clients());
+        }
+        "mqtt-retained" => {
+            println!("{}", crate::mqtt_broker::list_retained());
+        }
+        "ws-conns" => {
+            println!("{}", crate::ws_server::list_connections());
+        }
+        "ws-rooms" => {
+            println!("{}", crate::ws_server::list_rooms());
+        }
+        "ws-stats" => {
+            println!("{}", crate::ws_server::ws_stats());
         }
         "panic" => panic!("user-triggered panic via shell"),
         _ => {

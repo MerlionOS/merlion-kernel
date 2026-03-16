@@ -81,6 +81,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     log_rotate::init();
     remote_log::init();
     panic_recover::init();
+    http_middleware::init();
+    scp::init();
+    dns_zone::init();
+    mqtt_broker::init();
+    ws_server::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
