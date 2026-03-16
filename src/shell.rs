@@ -290,6 +290,23 @@ pub fn dispatch(cmd: &str) {
             println!("  shutdown   - power off");
             println!("  reboot     - restart");
             println!("  panic      - trigger panic");
+            println!("Security commands:");
+            println!("  id [user]  - show user/group identity");
+            println!("  whoami     - current user name");
+            println!("  su <user>  - switch user");
+            println!("  sudo <cmd> - run command as root");
+            println!("  passwd     - change password");
+            println!("  chmod <m> <p> - change file mode");
+            println!("  chown <o> <p> - change file owner");
+            println!("  useradd <n> <uid> - add user");
+            println!("  userdel <uid> - remove user");
+            println!("  users      - list all users");
+            println!("  groups     - list all groups");
+            println!("  ls -l [p]  - long listing with perms");
+            println!("  caps [pid] - show capabilities");
+            println!("  seccomp <pid> - syscall filter info");
+            println!("  audit      - security audit summary");
+            println!("  mkdir <p>  - create directory");
             println!("Hardware:");
             println!("  wget <url> - fetch URL via real TCP connection");
             println!("  ifup       - DHCP discover sequence");
@@ -395,6 +412,28 @@ pub fn dispatch(cmd: &str) {
         }
 
         // --- File commands ---
+        "ls -l" => {
+            match crate::vfs::ls_long("/") {
+                Ok(entries) => {
+                    for entry in entries {
+                        println!("  {}", entry);
+                    }
+                }
+                Err(e) => println!("ls: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("ls -l ") => {
+            let path = cmd[6..].trim();
+            let path = if path.is_empty() { "/" } else { path };
+            match crate::vfs::ls_long(path) {
+                Ok(entries) => {
+                    for entry in entries {
+                        println!("  {}", entry);
+                    }
+                }
+                Err(e) => println!("ls: {}", e),
+            }
+        }
         "ls" => do_ls("/"),
         cmd if cmd.starts_with("ls ") => do_ls(cmd[3..].trim()),
 
@@ -1178,6 +1217,154 @@ pub fn dispatch(cmd: &str) {
         "hostname" => {
             println!("{}", env::get("HOSTNAME").unwrap_or_else(|| alloc::string::String::from("merlion")));
         }
+
+        // --- Security commands ---
+        "id" => {
+            match crate::security::id_info(None) {
+                Ok(info) => println!("{}", info),
+                Err(e) => println!("id: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("id ") => {
+            let user = cmd[3..].trim();
+            match crate::security::id_info(Some(user)) {
+                Ok(info) => println!("{}", info),
+                Err(e) => println!("id: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("su ") => {
+            let user = cmd[3..].trim();
+            // For now, no password prompt in shell - root can su freely
+            match crate::security::su(user, Some("")) {
+                Ok(()) => {
+                    crate::env::set("USER", user);
+                    println!("Switched to {}", user);
+                }
+                Err(e) => println!("su: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("sudo ") => {
+            let subcmd = cmd[5..].trim();
+            let orig_uid = crate::security::current_uid();
+            let _ = orig_uid;
+            // Temporarily switch to root
+            match crate::security::sudo(Some(""), || {
+                dispatch(subcmd);
+            }) {
+                Ok(()) => {},
+                Err(e) => println!("sudo: {}", e),
+            }
+        }
+        "passwd" => {
+            let user = crate::security::whoami();
+            match crate::security::passwd(&user, Some(""), "") {
+                Ok(()) => println!("Password updated for {}", user),
+                Err(e) => println!("passwd: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("passwd ") => {
+            let user = cmd[7..].trim();
+            match crate::security::passwd(user, Some(""), "") {
+                Ok(()) => println!("Password updated for {}", user),
+                Err(e) => println!("passwd: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("chmod ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[6..].trim().splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                // Parse octal mode
+                if let Ok(mode) = u16::from_str_radix(parts[0], 8) {
+                    match crate::security::chmod(parts[1], mode) {
+                        Ok(()) => println!("chmod: mode set to {:o} on {}", mode, parts[1]),
+                        Err(e) => println!("chmod: {}", e),
+                    }
+                } else {
+                    println!("chmod: invalid mode (use octal, e.g. 755)");
+                }
+            } else {
+                println!("Usage: chmod <mode> <path>");
+            }
+        }
+        cmd if cmd.starts_with("chown ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[6..].trim().splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                let owner_parts: alloc::vec::Vec<&str> = parts[0].split(':').collect();
+                let uid = owner_parts[0].parse::<u32>().unwrap_or(0);
+                let gid = if owner_parts.len() > 1 {
+                    owner_parts[1].parse::<u32>().unwrap_or(0)
+                } else { 0 };
+                match crate::security::chown(parts[1], uid, gid) {
+                    Ok(()) => println!("chown: ownership changed on {}", parts[1]),
+                    Err(e) => println!("chown: {}", e),
+                }
+            } else {
+                println!("Usage: chown <uid:gid> <path>");
+            }
+        }
+        cmd if cmd.starts_with("useradd ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[8..].trim().splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                if let Ok(uid) = parts[1].parse::<u32>() {
+                    match crate::security::add_user(uid, parts[0], "", &[1000]) {
+                        Ok(()) => println!("useradd: added user {} (uid {})", parts[0], uid),
+                        Err(e) => println!("useradd: {}", e),
+                    }
+                } else {
+                    println!("Usage: useradd <name> <uid>");
+                }
+            } else {
+                println!("Usage: useradd <name> <uid>");
+            }
+        }
+        cmd if cmd.starts_with("userdel ") => {
+            if let Ok(uid) = cmd[8..].trim().parse::<u32>() {
+                match crate::security::remove_user(uid) {
+                    Ok(()) => println!("userdel: removed uid {}", uid),
+                    Err(e) => println!("userdel: {}", e),
+                }
+            } else {
+                println!("Usage: userdel <uid>");
+            }
+        }
+        "users" => {
+            for (uid, name) in crate::security::list_users() {
+                println!("  {:5} {}", uid, name);
+            }
+        }
+        "groups" => {
+            for (gid, name) in crate::security::list_groups() {
+                println!("  {:5} {}", gid, name);
+            }
+        }
+        "caps" => {
+            let pid = crate::task::current_pid();
+            println!("{}", crate::capability::list_caps(pid));
+        }
+        cmd if cmd.starts_with("caps ") => {
+            if let Ok(pid) = cmd[5..].trim().parse::<usize>() {
+                println!("{}", crate::capability::list_caps(pid));
+            } else {
+                println!("Usage: caps [pid]");
+            }
+        }
+        cmd if cmd.starts_with("seccomp ") => {
+            if let Ok(pid) = cmd[8..].trim().parse::<usize>() {
+                println!("{}", crate::capability::seccomp_display(pid));
+            } else {
+                println!("Usage: seccomp <pid>");
+            }
+        }
+        "audit" => {
+            println!("{}", crate::capability::audit_summary());
+        }
+        cmd if cmd.starts_with("mkdir ") => {
+            let path = cmd[6..].trim();
+            match crate::vfs::mkdir(path) {
+                Ok(()) => println!("mkdir: created {}", path),
+                Err(e) => println!("mkdir: {}", e),
+            }
+        }
+
         "uname" | "uname -a" => {
             let dt = rtc::read();
             println!("MerlionOS merlion 0.2.0 {} x86_64", dt);

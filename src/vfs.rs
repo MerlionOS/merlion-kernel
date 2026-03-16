@@ -32,6 +32,8 @@ struct Inode {
     node_type: NodeType,
     parent: usize,     // inode index of parent (0 for root)
     data: Vec<u8>,     // file contents (regular files only)
+    owner_uid: u32,
+    owner_gid: u32,
 }
 
 struct Filesystem {
@@ -48,6 +50,8 @@ impl Filesystem {
             node_type: NodeType::Directory,
             parent: 0,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 1: /dev
         fs.inodes.push(Inode {
@@ -55,6 +59,8 @@ impl Filesystem {
             node_type: NodeType::Directory,
             parent: 0,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 2: /dev/null
         fs.inodes.push(Inode {
@@ -62,6 +68,8 @@ impl Filesystem {
             node_type: NodeType::DevNull,
             parent: 1,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 3: /dev/serial
         fs.inodes.push(Inode {
@@ -69,6 +77,8 @@ impl Filesystem {
             node_type: NodeType::DevSerial,
             parent: 1,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 4: /proc
         fs.inodes.push(Inode {
@@ -76,6 +86,8 @@ impl Filesystem {
             node_type: NodeType::Directory,
             parent: 0,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 5: /proc/uptime
         fs.inodes.push(Inode {
@@ -83,6 +95,8 @@ impl Filesystem {
             node_type: NodeType::ProcUptime,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 6: /proc/meminfo
         fs.inodes.push(Inode {
@@ -90,6 +104,8 @@ impl Filesystem {
             node_type: NodeType::ProcMeminfo,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 7: /proc/tasks
         fs.inodes.push(Inode {
@@ -97,6 +113,8 @@ impl Filesystem {
             node_type: NodeType::ProcTasks,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 8: /proc/version
         fs.inodes.push(Inode {
@@ -104,6 +122,8 @@ impl Filesystem {
             node_type: NodeType::ProcVersion,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 9: /proc/cpuinfo
         fs.inodes.push(Inode {
@@ -111,6 +131,8 @@ impl Filesystem {
             node_type: NodeType::ProcCpuinfo,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 10: /proc/modules
         fs.inodes.push(Inode {
@@ -118,6 +140,8 @@ impl Filesystem {
             node_type: NodeType::ProcModules,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 11: /proc/self
         fs.inodes.push(Inode {
@@ -125,6 +149,8 @@ impl Filesystem {
             node_type: NodeType::ProcSelf,
             parent: 4,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 12: /etc
         fs.inodes.push(Inode {
@@ -132,6 +158,8 @@ impl Filesystem {
             node_type: NodeType::Directory,
             parent: 0,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
         // 13: /tmp
         fs.inodes.push(Inode {
@@ -139,6 +167,8 @@ impl Filesystem {
             node_type: NodeType::Directory,
             parent: 0,
             data: Vec::new(),
+            owner_uid: 0,
+            owner_gid: 0,
         });
 
         fs
@@ -290,6 +320,8 @@ impl Filesystem {
             node_type: NodeType::RegularFile,
             parent,
             data: Vec::new(),
+            owner_uid: crate::security::current_uid(),
+            owner_gid: crate::security::current_gid(),
         });
         Ok(idx)
     }
@@ -345,6 +377,10 @@ pub fn ls(path: &str) -> Result<Vec<(String, char)>, &'static str> {
 
 /// Read file contents.
 pub fn cat(path: &str) -> Result<String, &'static str> {
+    if !crate::security::can_read(path) {
+        crate::serial_println!("[audit] read denied: uid={} path={}", crate::security::current_uid(), path);
+        return Err("permission denied");
+    }
     let vfs = VFS.lock();
     let fs = vfs.as_ref().ok_or("VFS not initialized")?;
     let idx = fs.resolve(path).ok_or("file not found")?;
@@ -358,6 +394,11 @@ pub fn cat(path: &str) -> Result<String, &'static str> {
 
 /// Write string data to a file. Creates the file if it doesn't exist in /tmp.
 pub fn write(path: &str, data: &str) -> Result<(), &'static str> {
+    // Check write permission (for existing files)
+    if !crate::security::can_write(path) {
+        crate::serial_println!("[audit] write denied: uid={} path={}", crate::security::current_uid(), path);
+        return Err("permission denied");
+    }
     let mut vfs = VFS.lock();
     let fs = vfs.as_mut().ok_or("VFS not initialized")?;
 
@@ -376,6 +417,10 @@ pub fn write(path: &str, data: &str) -> Result<(), &'static str> {
 
 /// Remove a file.
 pub fn rm(path: &str) -> Result<(), &'static str> {
+    if !crate::security::can_write(path) {
+        crate::serial_println!("[audit] delete denied: uid={} path={}", crate::security::current_uid(), path);
+        return Err("permission denied");
+    }
     let mut vfs = VFS.lock();
     let fs = vfs.as_mut().ok_or("VFS not initialized")?;
     let idx = fs.resolve(path).ok_or("file not found")?;
@@ -389,4 +434,70 @@ pub fn exists(path: &str) -> bool {
     vfs.as_ref()
         .and_then(|fs| fs.resolve(path))
         .is_some()
+}
+
+/// List directory with permissions (ls -l style).
+pub fn ls_long(path: &str) -> Result<Vec<String>, &'static str> {
+    let vfs = VFS.lock();
+    let fs = vfs.as_ref().ok_or("VFS not initialized")?;
+    let idx = fs.resolve(path).ok_or("path not found")?;
+
+    if fs.inodes[idx].node_type != NodeType::Directory {
+        return Err("not a directory");
+    }
+
+    let entries: Vec<String> = fs
+        .list_dir(idx)
+        .iter()
+        .map(|node| {
+            let is_dir = node.node_type == NodeType::Directory;
+            let full_path = if path == "/" {
+                alloc::format!("/{}", node.name)
+            } else {
+                alloc::format!("{}/{}", path, node.name)
+            };
+            let perm_str = crate::security::format_perm_ls(&full_path, is_dir);
+            alloc::format!("{} {}", perm_str, node.name)
+        })
+        .collect();
+
+    Ok(entries)
+}
+
+/// Create a directory.
+pub fn mkdir(path: &str) -> Result<(), &'static str> {
+    let (parent_path, dirname) = path.rsplit_once('/').ok_or("invalid path")?;
+    let parent_path = if parent_path.is_empty() { "/" } else { parent_path };
+
+    // Check write permission on parent
+    if !crate::security::can_write(parent_path) {
+        return Err("permission denied");
+    }
+
+    let mut vfs = VFS.lock();
+    let fs = vfs.as_mut().ok_or("VFS not initialized")?;
+    let parent_idx = fs.resolve(parent_path).ok_or("parent not found")?;
+
+    if fs.inodes[parent_idx].node_type != NodeType::Directory {
+        return Err("parent is not a directory");
+    }
+    if fs.inodes.len() >= MAX_INODES {
+        return Err("filesystem full");
+    }
+    // Check if already exists
+    for (i, inode) in fs.inodes.iter().enumerate() {
+        if i != 0 && inode.parent == parent_idx && inode.name == dirname {
+            return Err("directory already exists");
+        }
+    }
+
+    fs.inodes.push(Inode {
+        name: dirname.to_owned(),
+        node_type: NodeType::Directory,
+        parent: parent_idx,
+        data: Vec::new(),
+        owner_uid: crate::security::current_uid(),
+        owner_gid: crate::security::current_gid(),
+    });
+    Ok(())
 }

@@ -27,6 +27,7 @@ pub mod boot_limine;
 pub mod chat;
 pub mod boot_info_ext;
 pub mod calc;
+pub mod capability;
 pub mod completion;
 pub mod compress;
 pub mod cluster;

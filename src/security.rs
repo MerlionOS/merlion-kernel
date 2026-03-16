@@ -290,3 +290,207 @@ pub fn list_groups() -> Vec<(u32, String)> {
         None => Vec::new(),
     }
 }
+
+/// Change the owner of a file path.
+/// Only root or current owner can change ownership.
+pub fn chown(path: &str, new_uid: u32, new_gid: u32) -> Result<(), &'static str> {
+    if !crate::vfs::exists(path) {
+        return Err("security: file not found");
+    }
+    let uid = current_uid();
+    let mut lock = PERM_TABLE.lock();
+    if let Some(entry) = lock.iter_mut().find(|e| e.0 == path) {
+        if uid != 0 && uid != entry.1.owner_uid {
+            return Err("security: permission denied");
+        }
+        entry.1.owner_uid = new_uid;
+        entry.1.owner_gid = new_gid;
+    } else {
+        // Create new entry with default permissions
+        if uid != 0 {
+            return Err("security: permission denied");
+        }
+        lock.push((path.to_owned(), Permission::new(0o644, new_uid, new_gid)));
+    }
+    Ok(())
+}
+
+/// Check if current user can read a file.
+pub fn can_read(path: &str) -> bool {
+    let uid = current_uid();
+    let perms = get_permission(path);
+    check_permission(uid, &perms, Permission::READ)
+}
+
+/// Check if current user can write to a file.
+pub fn can_write(path: &str) -> bool {
+    let uid = current_uid();
+    let perms = get_permission(path);
+    check_permission(uid, &perms, Permission::WRITE)
+}
+
+/// Check if current user can execute a file.
+pub fn can_exec(path: &str) -> bool {
+    let uid = current_uid();
+    let perms = get_permission(path);
+    check_permission(uid, &perms, Permission::EXEC)
+}
+
+/// Get user info as a formatted string (like `id` command).
+/// Format: uid=1000(user) gid=1000(users) groups=1000(users)
+pub fn id_info(username: Option<&str>) -> Result<String, &'static str> {
+    let lock = USER_DB.lock();
+    let db = lock.as_ref().ok_or("security: not initialised")?;
+
+    let user = if let Some(name) = username {
+        db.users.iter().find(|u| u.name == name).ok_or("security: user not found")?
+    } else {
+        let uid = db.current_uid;
+        db.users.iter().find(|u| u.uid == uid).ok_or("security: user not found")?
+    };
+
+    let mut result = alloc::format!("uid={}({})", user.uid, user.name);
+
+    // Primary group (first group)
+    if let Some(&gid) = user.groups.first() {
+        let gname = db.groups.iter()
+            .find(|g| g.gid == gid)
+            .map(|g| g.name.as_str())
+            .unwrap_or("?");
+        result.push_str(&alloc::format!(" gid={}({})", gid, gname));
+    }
+
+    // All groups
+    result.push_str(" groups=");
+    for (i, &gid) in user.groups.iter().enumerate() {
+        if i > 0 { result.push(','); }
+        let gname = db.groups.iter()
+            .find(|g| g.gid == gid)
+            .map(|g| g.name.as_str())
+            .unwrap_or("?");
+        result.push_str(&alloc::format!("{}({})", gid, gname));
+    }
+
+    Ok(result)
+}
+
+/// Change a user's password. Root can change any password.
+/// Non-root users must provide the old password.
+pub fn passwd(username: &str, old_password: Option<&str>, new_password: &str) -> Result<(), &'static str> {
+    let mut lock = USER_DB.lock();
+    let db = lock.as_mut().ok_or("security: not initialised")?;
+    let caller_uid = db.current_uid;
+
+    let user = db.users.iter_mut()
+        .find(|u| u.name == username)
+        .ok_or("security: user not found")?;
+
+    // Non-root must provide correct old password
+    if caller_uid != 0 {
+        if caller_uid != user.uid {
+            return Err("security: only root can change other users' passwords");
+        }
+        let old = old_password.ok_or("security: old password required")?;
+        if user.password_hash != hash_password(old) {
+            return Err("security: old password incorrect");
+        }
+    }
+
+    user.password_hash = hash_password(new_password);
+    Ok(())
+}
+
+/// Set the current UID directly (used by login system).
+/// Only callable when current_uid is 0 (root/system context).
+pub fn set_current_uid(uid: u32) -> Result<(), &'static str> {
+    let mut lock = USER_DB.lock();
+    let db = lock.as_mut().ok_or("security: not initialised")?;
+    if db.current_uid != 0 && db.current_uid != uid {
+        return Err("security: permission denied");
+    }
+    if !db.users.iter().any(|u| u.uid == uid) {
+        return Err("security: user not found");
+    }
+    db.current_uid = uid;
+    Ok(())
+}
+
+/// Lookup UID by username.
+pub fn uid_by_name(name: &str) -> Option<u32> {
+    let lock = USER_DB.lock();
+    lock.as_ref().and_then(|db| db.users.iter().find(|u| u.name == name).map(|u| u.uid))
+}
+
+/// Lookup username by UID.
+pub fn name_by_uid(uid: u32) -> Option<String> {
+    let lock = USER_DB.lock();
+    lock.as_ref().and_then(|db| db.users.iter().find(|u| u.uid == uid).map(|u| u.name.clone()))
+}
+
+/// Lookup group name by GID.
+pub fn group_name(gid: u32) -> Option<String> {
+    let lock = USER_DB.lock();
+    lock.as_ref().and_then(|db| db.groups.iter().find(|g| g.gid == gid).map(|g| g.name.clone()))
+}
+
+/// Get the primary GID for the current user.
+pub fn current_gid() -> u32 {
+    let lock = USER_DB.lock();
+    match lock.as_ref() {
+        Some(db) => {
+            db.users.iter()
+                .find(|u| u.uid == db.current_uid)
+                .and_then(|u| u.groups.first().copied())
+                .unwrap_or(0)
+        }
+        None => 0,
+    }
+}
+
+/// Format permission for ls -l display: drwxr-xr-x owner group
+pub fn format_perm_ls(path: &str, is_dir: bool) -> String {
+    let perm = get_permission(path);
+    let type_char = if is_dir { 'd' } else { '-' };
+    let owner_name = name_by_uid(perm.owner_uid).unwrap_or_else(|| alloc::format!("{}", perm.owner_uid));
+    let group = group_name(perm.owner_gid).unwrap_or_else(|| alloc::format!("{}", perm.owner_gid));
+    alloc::format!("{}{} {} {}", type_char, perm.display(), owner_name, group)
+}
+
+/// Execute a command as root (sudo). Temporarily switches to root, runs the callback, switches back.
+pub fn sudo<F: FnOnce()>(password: Option<&str>, f: F) -> Result<(), &'static str> {
+    let original_uid = current_uid();
+
+    // If already root, just run
+    if original_uid == 0 {
+        f();
+        return Ok(());
+    }
+
+    // Verify root password (or user's own password for sudo group)
+    let pw = password.ok_or("security: password required for sudo")?;
+
+    // Check if user is in sudo/root group or authenticate with root password
+    let mut lock = USER_DB.lock();
+    let db = lock.as_mut().ok_or("security: not initialised")?;
+
+    // For simplicity: authenticate with root's password
+    let root = db.users.iter()
+        .find(|u| u.uid == 0)
+        .ok_or("security: root user not found")?;
+
+    if root.password_hash != hash_password(pw) {
+        return Err("security: sudo authentication failed");
+    }
+
+    db.current_uid = 0;
+    drop(lock);
+
+    f();
+
+    // Restore original UID
+    let mut lock = USER_DB.lock();
+    if let Some(db) = lock.as_mut() {
+        db.current_uid = original_uid;
+    }
+    Ok(())
+}

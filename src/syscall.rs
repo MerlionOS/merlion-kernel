@@ -9,6 +9,14 @@
 ///   4 (SYS_SLEEP):  sleep(ticks) — busy-wait for N timer ticks
 ///   5 (SYS_SEND):   send(channel_id, byte) — send byte to IPC channel
 ///   6 (SYS_RECV):   recv(channel_id) — receive byte from IPC channel
+///   7 (SYS_GETUID):    getuid() — return current UID
+///   8 (SYS_SETUID):    setuid(uid) — set UID (requires CAP_SETUID)
+///   9 (SYS_GETGID):    getgid() — return current GID
+///  10 (SYS_SETGID):    setgid(gid) — set GID (requires CAP_SETGID)
+///  11 (SYS_GETGROUPS): getgroups() — return group count
+///  12 (SYS_CHMOD):     chmod(path_ptr, mode) — change file permissions
+///  13 (SYS_CHOWN):     chown(path_ptr, uid_gid) — change ownership
+///  14 (SYS_ACCESS):    access(path_ptr, mode) — check file access
 
 use crate::{serial_println, klog_println, println, task, timer, ipc};
 
@@ -19,8 +27,34 @@ const SYS_GETPID: u64 = 3;
 const SYS_SLEEP: u64 = 4;
 const SYS_SEND: u64 = 5;
 const SYS_RECV: u64 = 6;
+const SYS_GETUID: u64 = 7;
+const SYS_SETUID: u64 = 8;
+const SYS_GETGID: u64 = 9;
+const SYS_SETGID: u64 = 10;
+const SYS_GETGROUPS: u64 = 11;
+const SYS_CHMOD: u64 = 12;
+const SYS_CHOWN: u64 = 13;
+const SYS_ACCESS: u64 = 14;
 
 pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, _arg3: u64) {
+    // Seccomp filter check
+    let pid = task::current_pid();
+    match crate::capability::seccomp_check(pid, syscall_num) {
+        crate::capability::FilterAction::Kill => {
+            serial_println!("[seccomp] pid {} killed: blocked syscall {}", pid, syscall_num);
+            klog_println!("[seccomp] pid {} killed: blocked syscall {}", pid, syscall_num);
+            crate::capability::audit_log(crate::capability::AuditEvent::SeccompViolation {
+                pid,
+                syscall: syscall_num,
+            });
+            task::exit();
+        }
+        crate::capability::FilterAction::Log => {
+            serial_println!("[seccomp] pid {} logged syscall {}", pid, syscall_num);
+        }
+        crate::capability::FilterAction::Allow => {}
+    }
+
     match syscall_num {
         SYS_WRITE => {
             let buf = arg1 as *const u8;
@@ -69,6 +103,44 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, _arg3: u64) {
                 }
                 task::yield_now();
             }
+        }
+        SYS_GETUID => {
+            let uid = crate::security::current_uid();
+            serial_println!("[syscall] getuid() = {}", uid);
+        }
+        SYS_SETUID => {
+            let target_uid = arg1 as u32;
+            let pid = task::current_pid();
+            if crate::capability::has_cap(pid, crate::capability::CAP_SETUID) {
+                let _ = crate::security::set_current_uid(target_uid);
+                serial_println!("[syscall] setuid({}) ok", target_uid);
+            } else {
+                serial_println!("[syscall] setuid({}) denied — no CAP_SETUID", target_uid);
+                crate::capability::audit_log(crate::capability::AuditEvent::CapabilityDenied {
+                    pid,
+                    cap: "CAP_SETUID",
+                });
+            }
+        }
+        SYS_GETGID => {
+            let gid = crate::security::current_gid();
+            serial_println!("[syscall] getgid() = {}", gid);
+        }
+        SYS_SETGID => {
+            let _target_gid = arg1 as u32;
+            serial_println!("[syscall] setgid() — not fully implemented");
+        }
+        SYS_GETGROUPS => {
+            serial_println!("[syscall] getgroups() — not fully implemented");
+        }
+        SYS_CHMOD => {
+            serial_println!("[syscall] chmod() — use shell command instead");
+        }
+        SYS_CHOWN => {
+            serial_println!("[syscall] chown() — use shell command instead");
+        }
+        SYS_ACCESS => {
+            serial_println!("[syscall] access() — use shell command instead");
         }
         _ => {
             serial_println!("[syscall] unknown syscall {}", syscall_num);

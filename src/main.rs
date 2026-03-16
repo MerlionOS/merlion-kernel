@@ -75,6 +75,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     netstack::init();
     usb_hid::init();
     semfs::init();
+    security::init();
+    capability::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();
