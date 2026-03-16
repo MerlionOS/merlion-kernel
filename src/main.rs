@@ -90,6 +90,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     vector_store::init();
     ai_workflow::init();
     self_evolve::init();
+    gpu::init();
+    bluetooth::init();
+    dfs::init();
+    rt_sched::init();
+    microkernel::init();
     ai_proxy::init();
     agent::init();
     kconfig::load();

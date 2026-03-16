@@ -382,6 +382,28 @@ pub fn dispatch(cmd: &str) {
             println!("  findings     - code analysis findings");
             println!("  patches      - generated patches");
             println!("  evolve-stats - evolution statistics");
+            println!("Hardware extensions:");
+            println!("  gpu-info     - GPU device info");
+            println!("  gpu-stats    - GPU compute statistics");
+            println!("  gpu-bench    - GPU benchmark");
+            println!("  gpu-buffers  - list GPU buffers");
+            println!("  bt-info      - Bluetooth controller info");
+            println!("  bt-scan      - scan for BT devices");
+            println!("  bt-devices   - list BT devices");
+            println!("  bt-stats     - Bluetooth statistics");
+            println!("  dfs-info     - distributed FS info");
+            println!("  dfs-nodes    - list DFS cluster nodes");
+            println!("  dfs-mounts   - list remote mounts");
+            println!("  dfs-stats    - DFS statistics");
+            println!("  rt-tasks     - list real-time tasks");
+            println!("  rt-stats     - RT scheduler statistics");
+            println!("  rt-test      - schedulability test");
+            println!("  services     - list microkernel services");
+            println!("  ukernel      - microkernel mode status");
+            println!("  ukernel-stats - microkernel statistics");
+            println!("  ukernel on   - enable microkernel mode");
+            println!("  ukernel off  - disable microkernel mode");
+            println!("  health       - service health check");
         }
         "info" => {
             let mem = memory::stats();
@@ -2097,6 +2119,27 @@ pub fn dispatch(cmd: &str) {
             }
         }
         "panic" => panic!("user-triggered panic via shell"),
+        "gpu-info" => { println!("{}", crate::gpu::gpu_info()); }
+        "gpu-stats" => { println!("{}", crate::gpu::gpu_stats()); }
+        "gpu-bench" => { println!("{}", crate::gpu::benchmark()); }
+        "gpu-buffers" => { println!("{}", crate::gpu::list_buffers()); }
+        "bt-info" => { println!("{}", crate::bluetooth::bt_info()); }
+        "bt-scan" => { crate::bluetooth::scan_start(); println!("Scanning for Bluetooth devices..."); println!("{}", crate::bluetooth::list_devices()); }
+        "bt-devices" => { println!("{}", crate::bluetooth::list_devices()); }
+        "bt-stats" => { println!("{}", crate::bluetooth::bt_stats()); }
+        "dfs-info" => { println!("{}", crate::dfs::dfs_info()); }
+        "dfs-nodes" => { println!("{}", crate::dfs::list_nodes()); }
+        "dfs-mounts" => { println!("{}", crate::dfs::list_mounts()); }
+        "dfs-stats" => { println!("{}", crate::dfs::dfs_stats()); }
+        "rt-tasks" => { println!("{}", crate::rt_sched::list_rt_tasks()); }
+        "rt-stats" => { println!("{}", crate::rt_sched::rt_stats()); }
+        "rt-test" => { println!("{}", crate::rt_sched::schedulability_test()); }
+        "services" => { println!("{}", crate::microkernel::list_services()); }
+        "ukernel" => { println!("{}", crate::microkernel::ukernel_stats()); }
+        "ukernel-stats" => { println!("{}", crate::microkernel::ukernel_stats()); }
+        "ukernel on" => { crate::microkernel::enable_microkernel_mode(); println!("Microkernel mode enabled."); }
+        "ukernel off" => { crate::microkernel::disable_microkernel_mode(); println!("Microkernel mode disabled."); }
+        "health" => { println!("{}", crate::microkernel::health_check()); }
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {
