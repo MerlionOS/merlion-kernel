@@ -1202,6 +1202,41 @@ pub fn dispatch_system(cmd: &str) -> bool {
             println!("{}", cmd[5..].trim());
         }
         "echo" => println!(),
+        "pwd" => {
+            let cwd = env::get("PWD").unwrap_or_else(|| alloc::string::String::from("/"));
+            println!("{}", cwd);
+        }
+        cmd if cmd == "cd" || cmd.starts_with("cd ") => {
+            let target = if cmd.len() > 2 { cmd[2..].trim() } else { "" };
+            let target = if target.is_empty() {
+                env::get("HOME").unwrap_or_else(|| alloc::string::String::from("/tmp"))
+            } else {
+                let cwd = env::get("PWD").unwrap_or_else(|| alloc::string::String::from("/"));
+                if target.starts_with('/') {
+                    alloc::string::String::from(target)
+                } else if target == ".." {
+                    // Go up one level
+                    if let Some(pos) = cwd.rfind('/') {
+                        if pos == 0 { alloc::string::String::from("/") }
+                        else { alloc::string::String::from(&cwd[..pos]) }
+                    } else {
+                        alloc::string::String::from("/")
+                    }
+                } else {
+                    if cwd == "/" {
+                        alloc::format!("/{}", target)
+                    } else {
+                        alloc::format!("{}/{}", cwd, target)
+                    }
+                }
+            };
+            // Verify directory exists
+            if crate::vfs::exists(&target) {
+                env::set("PWD", &target);
+            } else {
+                println!("cd: {}: No such directory", target);
+            }
+        }
         "env" => {
             for (k, v) in env::list() {
                 println!("  {}={}", k, v);

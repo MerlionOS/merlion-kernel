@@ -156,11 +156,16 @@ impl Buffer {
                 None => return Err("No filename"),
             },
         };
-        // Ensure absolute path — default to /tmp/ if no leading slash
+        // Ensure absolute path — use PWD for relative paths
         let target_owned = if target.starts_with('/') {
             String::from(target)
         } else {
-            alloc::format!("/tmp/{}", target)
+            let cwd = crate::env::get("PWD").unwrap_or_else(|| String::from("/tmp"));
+            if cwd == "/" {
+                alloc::format!("/{}", target)
+            } else {
+                alloc::format!("{}/{}", cwd, target)
+            }
         };
         let mut content = String::new();
         for (i, line) in self.lines.iter().enumerate() {
@@ -1926,7 +1931,20 @@ pub fn init() {
 /// Start the vim editor on a file.
 /// Called from shell as `vim <filename>`.
 pub fn start(filename: Option<&str>) {
-    let editor = match filename {
+    // Resolve relative paths using PWD
+    let resolved = filename.map(|path| {
+        if path.starts_with('/') {
+            String::from(path)
+        } else {
+            let cwd = crate::env::get("PWD").unwrap_or_else(|| String::from("/tmp"));
+            if cwd == "/" {
+                alloc::format!("/{}", path)
+            } else {
+                alloc::format!("{}/{}", cwd, path)
+            }
+        }
+    });
+    let editor = match &resolved {
         Some(path) => Editor::open(path),
         None => Editor::new(),
     };

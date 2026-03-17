@@ -38,6 +38,7 @@ pub fn init() {
     set("ARCH", "x86_64");
     set("SHELL", "/bin/msh");
     set("HOME", "/tmp");
+    set("PWD", "/");
     set("PS1", "merlion> ");
 }
 
