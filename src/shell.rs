@@ -3338,6 +3338,68 @@ pub fn dispatch(cmd: &str) {
         "acpi-ext-info" => { println!("{}", crate::acpi_ext::acpi_ext_info()); }
         "acpi-ext-stats" => { println!("{}", crate::acpi_ext::acpi_ext_stats()); }
 
+        // -- v83: Window Compositor --
+        "wm-info" => { println!("{}", crate::compositor::compositor_info()); }
+        "wm-stats" => { println!("{}", crate::compositor::compositor_stats()); }
+        "wm-windows" => { println!("{}", crate::compositor::list_windows()); }
+        cmd if cmd.starts_with("wm-create ") => {
+            let args = cmd.strip_prefix("wm-create ").unwrap().trim();
+            let parts: alloc::vec::Vec<&str> = args.splitn(3, ' ').collect();
+            if parts.len() >= 1 {
+                let title = parts[0];
+                let w = parts.get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(400);
+                let h = parts.get(2).and_then(|s| s.parse::<u32>().ok()).unwrap_or(300);
+                let id = crate::compositor::create_window(title, w, h);
+                if id > 0 { println!("Created window {} ({}x{}): {}", id, w, h, title); }
+                else { println!("wm-create: max windows reached"); }
+            } else {
+                println!("Usage: wm-create <title> [width] [height]");
+            }
+        }
+
+        // -- v84: Desktop Environment --
+        "desktop-info" => { println!("{}", crate::desktop::desktop_info()); }
+        "desktop-stats" => { println!("{}", crate::desktop::desktop_stats()); }
+        "launcher" => {
+            crate::desktop::show_launcher();
+            println!("{}", crate::desktop::list_apps());
+        }
+        cmd if cmd.starts_with("launch ") => {
+            let name = cmd.strip_prefix("launch ").unwrap().trim();
+            match crate::desktop::launch_app(name) {
+                Some(cmd_str) => {
+                    println!("Launching: {}", cmd_str);
+                    dispatch(&cmd_str);
+                }
+                None => println!("launch: app '{}' not found", name),
+            }
+        }
+        "theme" => { println!("{}", crate::desktop::get_theme()); }
+        "tray" => { println!("{}", crate::desktop::tray_info()); }
+
+        // -- v85: File Manager --
+        cmd if cmd.starts_with("files ") => {
+            let path = cmd.strip_prefix("files ").unwrap().trim();
+            if path.is_empty() {
+                crate::file_manager::open_directory("/");
+            } else {
+                crate::file_manager::open_directory(path);
+            }
+        }
+        "files" => { crate::file_manager::open_directory("/"); }
+
+        // -- v86: Network Manager --
+        "net-mgr" => { crate::net_manager::show(); }
+
+        // -- v87: System Settings --
+        cmd if cmd.starts_with("settings ") => {
+            let panel = cmd.strip_prefix("settings ").unwrap().trim();
+            crate::settings_app::open_panel(panel);
+        }
+        "settings" => { crate::settings_app::show_overview(); }
+        "settings-save" => { crate::settings_app::save_settings(); }
+        "settings-load" => { crate::settings_app::load_settings(); }
+
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
         "sh" => crate::bash::cmd_sh(),

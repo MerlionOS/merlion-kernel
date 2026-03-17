@@ -189,6 +189,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     hpnet::init();
     zero_copy::init();
     dpdk::init();
+    compositor::init();
+    desktop::init();
+    file_manager::init();
+    net_manager::init();
+    settings_app::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
