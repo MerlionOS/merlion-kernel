@@ -4,7 +4,7 @@ KERNEL_BIN = target/x86_64-unknown-none/debug/bootimage-merlion-kernel.bin
 DISK_IMG = disk.img
 
 build:
-	cargo bootimage
+	cargo bootimage --bin merlion-kernel
 
 run:
 	qemu-system-x86_64 \
