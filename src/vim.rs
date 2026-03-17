@@ -314,7 +314,7 @@ impl Editor {
             count: None,
             pending_op: None,
             show_line_numbers: true,
-            message: String::from("Welcome to MerlionVim — type :help for info"),
+            message: String::from("Welcome to MerlionVim -- type :help for info"),
             running: true,
             visual_start: (0, 0),
         }
@@ -1931,6 +1931,14 @@ pub fn start(filename: Option<&str>) {
         *guard = Some(editor);
     }
     ACTIVE.store(true, Ordering::SeqCst);
+    // Clear entire VGA screen first to remove shell remnants
+    unsafe {
+        let vga = 0xB8000 as *mut u8;
+        for i in 0..(80 * 25) {
+            vga.add(i * 2).write_volatile(b' ');
+            vga.add(i * 2 + 1).write_volatile(0x07);
+        }
+    }
     redraw_vga();
 }
 
