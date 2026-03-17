@@ -2886,6 +2886,49 @@ pub fn dispatch(cmd: &str) {
         "rip-routes" => { println!("{}", crate::rip::show_routes()); }
         "rip-stats" => { println!("{}", crate::rip::rip_stats()); }
 
+        // gRPC
+        "grpc-info" => { println!("{}", crate::grpc::grpc_info()); }
+        "grpc-services" => { println!("{}", crate::grpc::list_services()); }
+        "grpc-stats" => { println!("{}", crate::grpc::grpc_stats()); }
+
+        // SMTP
+        _ if cmd.starts_with("smtp-send ") => {
+            // smtp-send from@addr to@addr subject body [server]
+            let args: alloc::vec::Vec<&str> = cmd[10..].splitn(5, ' ').collect();
+            if args.len() >= 4 {
+                let server = if args.len() >= 5 { args[4] } else { "127.0.0.1" };
+                match crate::smtp::send_email(args[0], args[1], args[2], args[3], server) {
+                    Ok(id) => println!("Email queued (id={})", id),
+                    Err(e) => println!("smtp-send: {}", e),
+                }
+            } else {
+                println!("usage: smtp-send <from> <to> <subject> <body> [server]");
+            }
+        }
+        "smtp-queue" => { println!("{}", crate::smtp::list_queue()); }
+        "smtp-info" => { println!("{}", crate::smtp::smtp_info()); }
+        "smtp-stats" => { println!("{}", crate::smtp::smtp_stats()); }
+
+        // IMAP
+        "imap-info" => { println!("{}", crate::imap::imap_info()); }
+        "imap-stats" => { println!("{}", crate::imap::imap_stats()); }
+
+        // TFTP
+        "tftp-status" => { println!("{}", crate::tftp::tftp_info()); }
+        "tftp-stats" => { println!("{}", crate::tftp::tftp_stats()); }
+        "tftp-start" => {
+            match crate::tftp::start_server() {
+                Ok(()) => println!("TFTP server started on UDP port {}", crate::tftp::DEFAULT_PORT),
+                Err(e) => println!("tftp-start: {}", e),
+            }
+        }
+        "tftp-stop" => {
+            match crate::tftp::stop_server() {
+                Ok(()) => println!("TFTP server stopped"),
+                Err(e) => println!("tftp-stop: {}", e),
+            }
+        }
+
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
         "sh" => crate::bash::cmd_sh(),

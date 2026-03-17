@@ -159,6 +159,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     ospf::init();
     bgp::init();
     rip::init();
+    grpc::init();
+    smtp::init();
+    imap::init();
+    tftp::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
