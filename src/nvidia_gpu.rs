@@ -107,7 +107,25 @@ pub struct NvidiaGpuInfo {
     pub subsystem_id: u16,
     pub pcie_link_speed: u8,
     pub pcie_link_width: u8,
+    pub pcie_max_speed: u8,
+    pub pcie_max_width: u8,
     pub firmware_signed: bool, // always true for Maxwell+
+    pub compute_capability: (u8, u8),  // e.g. (8, 9) for Ada
+    pub mem_type: &'static str,        // GDDR6, GDDR6X, HBM2e, etc
+    pub bus_width_bits: u16,           // 128, 192, 256, 384
+    pub tdp_watts: u16,               // typical TDP
+    pub tensor_cores: u32,            // RT cores (Turing+)
+    pub pci_command: u16,             // PCI command register
+    pub pci_status: u16,              // PCI status register
+    pub latency_timer: u8,
+    pub header_type: u8,
+    pub cache_line_size: u8,
+    pub interrupt_line: u8,
+    pub interrupt_pin: u8,
+    pub capabilities_ptr: u8,
+    pub bar3: u64,
+    pub bar5: u64,
+    pub rom_bar: u64,                 // expansion ROM base
 }
 
 impl NvidiaGpuInfo {
@@ -121,18 +139,60 @@ impl NvidiaGpuInfo {
             name: String::new(),
             architecture: String::new(),
             cuda_cores: 0,
-            bar0: 0,
-            bar0_size: 0,
-            bar1: 0,
-            bar1_size: 0,
-            vram_mb: 0,
-            revision: 0,
+            bar0: 0, bar0_size: 0,
+            bar1: 0, bar1_size: 0,
+            vram_mb: 0, revision: 0,
             subsystem_vendor: 0,
             subsystem_id: 0,
-            pcie_link_speed: 0,
-            pcie_link_width: 0,
+            pcie_link_speed: 0, pcie_link_width: 0,
+            pcie_max_speed: 0, pcie_max_width: 0,
             firmware_signed: true,
+            compute_capability: (0, 0),
+            mem_type: "Unknown",
+            bus_width_bits: 0,
+            tdp_watts: 0,
+            tensor_cores: 0,
+            pci_command: 0, pci_status: 0,
+            latency_timer: 0, header_type: 0, cache_line_size: 0,
+            interrupt_line: 0, interrupt_pin: 0,
+            capabilities_ptr: 0,
+            bar3: 0, bar5: 0, rom_bar: 0,
         }
+    }
+}
+
+/// Get compute capability, memory type, bus width, TDP, tensor cores by device ID.
+fn gpu_specs(dev_id: u16) -> ((u8, u8), &'static str, u16, u16, u32) {
+    // (compute_cap, mem_type, bus_width, tdp, tensor_cores)
+    match dev_id {
+        // Ada Lovelace
+        0x2684 => ((8, 9), "GDDR6X", 384, 450, 512),  // RTX 4090
+        0x2704 => ((8, 9), "GDDR6X", 256, 320, 320),  // RTX 4080
+        0x2782 => ((8, 9), "GDDR6X", 256, 285, 264),  // RTX 4070 Ti
+        0x2786 => ((8, 9), "GDDR6X", 192, 200, 184),  // RTX 4070
+        0x2860 => ((8, 9), "GDDR6", 128, 160, 136),   // RTX 4060 Ti
+        0x2882 => ((8, 9), "GDDR6", 128, 115, 96),    // RTX 4060
+        // Hopper
+        0x2330 => ((9, 0), "HBM3", 5120, 700, 528),   // H100 SXM
+        0x2331 => ((9, 0), "HBM3", 5120, 350, 456),   // H100 PCIe
+        // Ampere
+        0x2204 => ((8, 6), "GDDR6X", 384, 350, 328),  // RTX 3090
+        0x2206 => ((8, 6), "GDDR6X", 320, 320, 272),  // RTX 3080
+        0x2484 => ((8, 6), "GDDR6", 256, 220, 184),   // RTX 3070
+        0x2504 => ((8, 6), "GDDR6", 256, 200, 152),   // RTX 3060 Ti
+        0x2560 => ((8, 6), "GDDR6", 192, 170, 112),   // RTX 3060
+        0x2235 => ((8, 0), "HBM2e", 5120, 400, 432),  // A100
+        // Turing
+        0x1E04 => ((7, 5), "GDDR6", 352, 250, 544),   // RTX 2080 Ti
+        0x1E07 => ((7, 5), "GDDR6", 256, 215, 368),   // RTX 2080
+        0x1F08 => ((7, 5), "GDDR6", 192, 160, 240),   // RTX 2060
+        // Pascal
+        0x1B06 => ((6, 1), "GDDR5X", 352, 250, 0),    // GTX 1080 Ti
+        0x1B80 => ((6, 1), "GDDR5X", 256, 180, 0),    // GTX 1080
+        0x1C82 => ((6, 1), "GDDR5", 128, 75, 0),      // GTX 1050 Ti
+        // Volta
+        0x1DB4 | 0x1DB5 => ((7, 0), "HBM2", 4096, 300, 640), // V100
+        _ => ((0, 0), "Unknown", 0, 0, 0),
     }
 }
 
@@ -506,6 +566,8 @@ pub fn detect() -> Option<NvidiaGpuInfo> {
                 // Firmware signing required since Maxwell (2014)
                 let firmware_signed = requires_signed_firmware(device_id);
 
+                let specs = gpu_specs(device_id);
+
                 let info = NvidiaGpuInfo {
                     found: true,
                     bus,
@@ -525,7 +587,25 @@ pub fn detect() -> Option<NvidiaGpuInfo> {
                     subsystem_id,
                     pcie_link_speed,
                     pcie_link_width,
+                    pcie_max_speed: pcie_link_speed,  // assume current = max for now
+                    pcie_max_width: pcie_link_width,
                     firmware_signed,
+                    compute_capability: specs.0,
+                    mem_type: specs.1,
+                    bus_width_bits: specs.2,
+                    tdp_watts: specs.3,
+                    tensor_cores: specs.4,
+                    pci_command: (pci::pci_read32(bus, dev, 0, 0x04) & 0xFFFF) as u16,
+                    pci_status: ((pci::pci_read32(bus, dev, 0, 0x04) >> 16) & 0xFFFF) as u16,
+                    latency_timer: ((pci::pci_read32(bus, dev, 0, 0x0C) >> 8) & 0xFF) as u8,
+                    header_type: ((pci::pci_read32(bus, dev, 0, 0x0C) >> 16) & 0xFF) as u8,
+                    cache_line_size: (pci::pci_read32(bus, dev, 0, 0x0C) & 0xFF) as u8,
+                    interrupt_line: (pci::pci_read32(bus, dev, 0, 0x3C) & 0xFF) as u8,
+                    interrupt_pin: ((pci::pci_read32(bus, dev, 0, 0x3C) >> 8) & 0xFF) as u8,
+                    capabilities_ptr: (pci::pci_read32(bus, dev, 0, 0x34) & 0xFF) as u8,
+                    bar3: (pci::pci_read32(bus, dev, 0, 0x1C) & 0xFFFFFFF0) as u64,
+                    bar5: (pci::pci_read32(bus, dev, 0, 0x24) & 0xFFFFFFF0) as u64,
+                    rom_bar: (pci::pci_read32(bus, dev, 0, 0x30) & 0xFFFFF800) as u64,
                 };
 
                 return Some(info);
@@ -565,7 +645,7 @@ pub fn nvidia_gpu_info() -> String {
     let vendor_str = board_vendor(info.subsystem_vendor);
     let bar0_mib = info.bar0_size / (1024 * 1024);
     let bar1_mib = info.bar1_size / (1024 * 1024);
-    let vram_gb = info.vram_mb / 1024;
+    let _vram_gb = info.vram_mb / 1024;
 
     let pcie_str = if info.pcie_link_speed > 0 {
         format!(
@@ -584,26 +664,50 @@ pub fn nvidia_gpu_info() -> String {
         "Firmware: unsigned (pre-Maxwell, limited open-source support)"
     };
 
+    let cc_str = if info.compute_capability.0 > 0 {
+        format!("Compute capability: {}.{}", info.compute_capability.0, info.compute_capability.1)
+    } else {
+        String::from("Compute capability: unknown")
+    };
+
+    let tc_str = if info.tensor_cores > 0 {
+        format!("Tensor cores: {}", info.tensor_cores)
+    } else {
+        String::from("Tensor cores: none (pre-Volta)")
+    };
+
     format!(
         "NVIDIA GPU: {} [{:04X}]\n\
          Architecture: {}\n\
          CUDA cores: {}\n\
+         {}\n\
+         {}\n\
+         Memory: {} MiB {} ({}-bit bus)\n\
+         TDP: {} W\n\
          Board: {} (subsys {:04X}:{:04X})\n\
          PCI: {:02x}:{:02x}.{}, rev {:02X}\n\
+         PCI Command: 0x{:04X}, Status: 0x{:04X}\n\
+         IRQ: line {}, pin {}\n\
          BAR0: 0x{:X} ({} MiB) — MMIO registers\n\
-         BAR1: 0x{:X} ({} MiB) — Framebuffer/VRAM\n\
-         VRAM: {} MiB ({} GB)\n\
+         BAR1: 0x{:X} ({} MiB) — VRAM aperture\n\
+         ROM:  0x{:X}\n\
          {}\n\
          {}\n\
          {}",
         info.name, info.device_id,
         info.architecture,
         info.cuda_cores,
+        cc_str,
+        tc_str,
+        info.vram_mb, info.mem_type, info.bus_width_bits,
+        info.tdp_watts,
         vendor_str, info.subsystem_vendor, info.subsystem_id,
         info.bus, info.device, info.function, info.revision,
+        info.pci_command, info.pci_status,
+        info.interrupt_line, info.interrupt_pin,
         info.bar0, bar0_mib,
         info.bar1, bar1_mib,
-        info.vram_mb, vram_gb,
+        info.rom_bar,
         pcie_str,
         fw_str,
         compute_status(),
