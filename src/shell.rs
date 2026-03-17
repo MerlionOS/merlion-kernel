@@ -2779,6 +2779,11 @@ pub fn dispatch(cmd: &str) {
             }
         }
 
+        "tcp-ext" => { println!("{}", crate::tcp_ext::tcp_ext_info()); }
+        "tcp-ext-stats" => { println!("{}", crate::tcp_ext::tcp_ext_stats()); }
+        "tfo-stats" => { println!("{}", crate::tcp_ext::tfo_stats()); }
+        "sack-stats" => { println!("{}", crate::tcp_ext::sack_stats()); }
+
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
         "sh" => crate::bash::cmd_sh(),

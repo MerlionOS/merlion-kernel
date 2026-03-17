@@ -107,6 +107,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     build_system::init();
     ext4::init();
     tcp_congestion::init();
+    tcp_ext::init();
     wasi::init();
     veth::init();
     bridge::init();

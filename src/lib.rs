@@ -207,6 +207,7 @@ pub mod tar;
 pub mod tcp;
 pub mod tetris;
 pub mod tcp_congestion;
+pub mod tcp_ext;
 pub mod tcp_real;
 pub mod testutil;
 pub mod timer;
