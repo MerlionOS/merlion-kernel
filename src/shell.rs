@@ -2710,6 +2710,14 @@ pub fn dispatch(cmd: &str) {
         "http2-info" => { println!("{}", crate::http2::http2_info()); }
         "http2-stats" => { println!("{}", crate::http2::http2_stats()); }
         "http2-streams" => { println!("{}", crate::http2::list_streams()); }
+        // QUIC
+        "quic-info" => { println!("{}", crate::quic::quic_info()); }
+        "quic-stats" => { println!("{}", crate::quic::quic_stats()); }
+        "quic-conns" => { println!("{}", crate::quic::list_connections()); }
+        // HTTP/3
+        "http3-info" => { println!("{}", crate::http3::h3_info()); }
+        "http3-stats" => { println!("{}", crate::http3::h3_stats()); }
+        "http3-conns" => { println!("{}", crate::http3::list_h3_connections()); }
 
         // DHCP server
         "dhcpd-status" => { println!("{}", crate::dhcpd::dhcpd_info()); }

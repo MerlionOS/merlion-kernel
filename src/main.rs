@@ -146,6 +146,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     vim::init();
     ftpd::init();
     http2::init();
+    quic::init();
+    http3::init();
     dhcpd::init();
     ntp::init();
     wireguard::init();
