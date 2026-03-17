@@ -2049,11 +2049,16 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
     use crate::{virtio, virtio_blk, ahci, nvme, xhci, e1000e, ioapic, gpt, power, rtl8139, rtl8169, intel_i225, usb_mass, sata, amdgpu};
 
     match cmd {
-        "amdgpu" | "amdgpu-info" => {
+        "gpu-info" => {
             println!("{}", amdgpu::amdgpu_info());
+            println!("{}", crate::amdgpu_compute::compute_info());
         }
-        "amdgpu-regs" => {
+        "gpu-regs" => {
             println!("{}", amdgpu::amdgpu_stats());
+        }
+        "gpu-test" => {
+            println!("{}", crate::amdgpu_compute::dma_test());
+            println!("{}", crate::amdgpu_compute::dispatch_test("32"));
         }
         "virtio" => {
             let devs = virtio::scan();
@@ -2217,16 +2222,13 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
             println!("{}", power::info());
         }
 
-        // GPU
-        "gpu-info" => { println!("{}", crate::gpu::gpu_info()); }
-        "gpu-stats" => { println!("{}", crate::gpu::gpu_stats()); }
-        "gpu-bench" => { println!("{}", crate::gpu::benchmark()); }
-        "gpu-buffers" => { println!("{}", crate::gpu::list_buffers()); }
-
-        // GPU Compute
-        "gpu-compute" => { println!("{}", crate::amdgpu_compute::compute_info()); }
+        // GPU (unified — hardware AMD + software fallback)
+        "gpu-status" => {
+            println!("{}", crate::amdgpu_compute::compute_info());
+        }
         "gpu-vram" => { println!("{}", crate::amdgpu_compute::vram_info()); }
-        "gpu-bench-compute" => { println!("{}", crate::amdgpu_compute::benchmark()); }
+        "gpu-bench" => { println!("{}", crate::amdgpu_compute::benchmark()); }
+        "gpu-buffers" => { println!("{}", crate::gpu::list_buffers()); }
         "gpu-dma-test" => { println!("{}", crate::amdgpu_compute::dma_test()); }
         cmd if cmd.starts_with("gpu-dispatch ") => {
             let arg = cmd.strip_prefix("gpu-dispatch ").unwrap().trim();
