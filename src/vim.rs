@@ -1946,21 +1946,16 @@ pub fn start(filename: Option<&str>) {
 pub fn handle_input(event: KeyEvent) {
     if !ACTIVE.load(Ordering::SeqCst) { return; }
 
-    // Debug: log every key to serial
-    match event {
-        KeyEvent::Char(ch) => crate::serial_println!("[vim] key: '{}' (0x{:02x}) mode={}", ch, ch as u8, mode_name()),
-        KeyEvent::Escape => crate::serial_println!("[vim] key: ESC mode={}", mode_name()),
-        KeyEvent::ArrowUp => crate::serial_println!("[vim] key: ArrowUp"),
-        KeyEvent::ArrowDown => crate::serial_println!("[vim] key: ArrowDown"),
-        KeyEvent::ArrowLeft => crate::serial_println!("[vim] key: ArrowLeft"),
-        KeyEvent::ArrowRight => crate::serial_println!("[vim] key: ArrowRight"),
-        _ => crate::serial_println!("[vim] key: other"),
-    }
-
     let still_running;
     {
         let mut guard = EDITOR.lock();
         if let Some(ref mut editor) = *guard {
+            // Debug: log key + mode while we hold the lock (no extra lock needed)
+            match event {
+                KeyEvent::Char(ch) => crate::serial_println!("[vim] key: '{}' mode={:?}", ch, editor.mode),
+                KeyEvent::Escape => crate::serial_println!("[vim] key: ESC mode={:?}", editor.mode),
+                _ => {}
+            }
             editor.handle_key(event);
             still_running = editor.running;
         } else {
@@ -1977,22 +1972,6 @@ pub fn handle_input(event: KeyEvent) {
     }
 
     redraw_vga();
-}
-
-fn mode_name() -> &'static str {
-    let guard = EDITOR.lock();
-    match guard.as_ref() {
-        Some(e) => match e.mode {
-            Mode::Normal => "NORMAL",
-            Mode::Insert => "INSERT",
-            Mode::Visual => "VISUAL",
-            Mode::VisualLine => "V-LINE",
-            Mode::Command => "COMMAND",
-            Mode::Search => "SEARCH",
-            Mode::Replace => "REPLACE",
-        },
-        None => "NONE",
-    }
 }
 
 /// Check if vim is currently active.
