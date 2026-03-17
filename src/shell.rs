@@ -436,6 +436,12 @@ pub fn dispatch(cmd: &str) {
             println!("  wasi-info    - WASI runtime info");
             println!("  veth-list    - virtual ethernet pairs");
             println!("  bridges      - network bridges");
+            println!("  iptables     - packet filter/NAT (iptables syntax)");
+            println!("  iptables-list - list all iptables rules");
+            println!("  conntrack    - connection tracking table");
+            println!("  vlan-list    - list VLANs");
+            println!("  vlan-create <vid> <name> - create VLAN");
+            println!("  vlan-info <vid> - VLAN details");
             println!("  dlopen       - loaded shared libraries");
             println!("  breakpoints  - debugger breakpoints");
             println!("  bt-debug     - annotated backtrace");
@@ -473,6 +479,13 @@ pub fn dispatch(cmd: &str) {
             println!("  display-info - display/GPU info");
             println!("  windows      - list windows");
             println!("  screenshot   - capture screen");
+            println!("VPN & service discovery:");
+            println!("  wg           - WireGuard show all");
+            println!("  wg-show      - WireGuard interfaces/peers");
+            println!("  wg-genkey    - generate WireGuard private key");
+            println!("  mdns-list    - list mDNS services");
+            println!("  mdns-browse <type> - browse services");
+            println!("  mdns-resolve <host> - resolve .local host");
             println!("System management:");
             println!("  who          - logged in users");
             println!("  w            - who + activity");
@@ -2345,6 +2358,44 @@ pub fn dispatch(cmd: &str) {
         "wasi-info" => { println!("{}", crate::wasi::wasi_info()); }
         "veth-list" => { for s in crate::veth::list_pairs() { println!("{}", s); } }
         "bridges" => { for s in crate::bridge::list_bridges() { println!("{}", s); } }
+        cmd if cmd.starts_with("iptables ") => {
+            match crate::iptables::parse_command(cmd) {
+                Ok(msg) => println!("{}", msg),
+                Err(e) => println!("iptables: {}", e),
+            }
+        }
+        "iptables" => { println!("{}", crate::iptables::iptables_info()); }
+        "iptables-list" => {
+            for ch in &[crate::iptables::Chain::Input, crate::iptables::Chain::Output,
+                        crate::iptables::Chain::Forward, crate::iptables::Chain::Prerouting,
+                        crate::iptables::Chain::Postrouting] {
+                println!("{}", crate::iptables::list_rules(*ch));
+            }
+        }
+        "iptables-stats" => { println!("{}", crate::iptables::iptables_stats()); }
+        "conntrack" => { println!("{}", crate::iptables::conntrack_info()); }
+        "conntrack-flush" => { crate::iptables::conntrack_flush(); println!("Conntrack table flushed."); }
+        "ip-forward-on" => { crate::iptables::enable_forwarding(); println!("IP forwarding enabled."); }
+        "ip-forward-off" => { crate::iptables::disable_forwarding(); println!("IP forwarding disabled."); }
+        "vlan-list" => { println!("{}", crate::vlan::list_vlans()); }
+        cmd if cmd.starts_with("vlan-create ") => {
+            let args = cmd.strip_prefix("vlan-create ").unwrap().trim();
+            let parts: alloc::vec::Vec<&str> = args.splitn(2, ' ').collect();
+            if parts.len() >= 2 {
+                if let Ok(vid) = parts[0].parse::<u16>() {
+                    match crate::vlan::create_vlan(vid, parts[1]) {
+                        Ok(()) => println!("VLAN {} ({}) created", vid, parts[1]),
+                        Err(e) => println!("vlan-create: {}", e),
+                    }
+                } else { println!("Usage: vlan-create <vid> <name>"); }
+            } else { println!("Usage: vlan-create <vid> <name>"); }
+        }
+        cmd if cmd.starts_with("vlan-info ") => {
+            if let Ok(vid) = cmd.strip_prefix("vlan-info ").unwrap().trim().parse::<u16>() {
+                println!("{}", crate::vlan::vlan_info(vid));
+            } else { println!("Usage: vlan-info <vid>"); }
+        }
+        "vlan-stats" => { println!("{}", crate::vlan::vlan_stats()); }
         "dlopen" => { println!("{}", crate::elf_runtime::linker_info()); }
         "breakpoints" => { println!("{}", crate::debuginfo::list_breakpoints()); }
         "bt-debug" => { println!("{}", crate::debuginfo::backtrace_annotated()); }
@@ -2650,6 +2701,75 @@ pub fn dispatch(cmd: &str) {
         }
         "sdcard" => { println!("{}", crate::sdcard::sdcard_info()); }
         "sdcard-stats" => { println!("{}", crate::sdcard::sdcard_stats()); }
+
+        // FTP server
+        "ftpd-status" => { println!("{}", crate::ftpd::ftpd_info()); }
+        "ftpd-sessions" => { println!("{}", crate::ftpd::list_sessions()); }
+        "ftpd-stats" => { println!("{}", crate::ftpd::ftpd_stats()); }
+        // HTTP/2
+        "http2-info" => { println!("{}", crate::http2::http2_info()); }
+        "http2-stats" => { println!("{}", crate::http2::http2_stats()); }
+        "http2-streams" => { println!("{}", crate::http2::list_streams()); }
+
+        // DHCP server
+        "dhcpd-status" => { println!("{}", crate::dhcpd::dhcpd_info()); }
+        "dhcpd-leases" => { println!("{}", crate::dhcpd::list_leases()); }
+        "dhcpd-stats" => { println!("{}", crate::dhcpd::dhcpd_stats()); }
+        "dhcpd-start" => {
+            crate::dhcpd::start(
+                [192, 168, 1, 100], [192, 168, 1, 200],
+                [255, 255, 255, 0], [192, 168, 1, 1], [8, 8, 8, 8],
+            );
+            println!("DHCP server started (192.168.1.100-200)");
+        }
+        "dhcpd-stop" => {
+            crate::dhcpd::stop();
+            println!("DHCP server stopped");
+        }
+        // NTP client
+        "ntp-status" => { println!("{}", crate::ntp::ntp_info()); }
+        "ntp-stats" => { println!("{}", crate::ntp::ntp_stats()); }
+        "ntp-sync" => {
+            match crate::ntp::sync([129, 6, 15, 28]) {
+                Ok(offset) => println!("NTP sync OK: offset={}ms", offset),
+                Err(e) => println!("NTP sync failed: {}", e),
+            }
+        }
+
+        // WireGuard VPN
+        "wg" | "wg-show" => { println!("{}", crate::wireguard::wg_show()); }
+        "wg-genkey" => { println!("{}", crate::wireguard::wg_genkey()); }
+        "wg-info" => { println!("{}", crate::wireguard::wg_info()); }
+        "wg-stats" => { println!("{}", crate::wireguard::wg_stats()); }
+        cmd if cmd.starts_with("wg-pubkey ") => {
+            let hex = cmd.strip_prefix("wg-pubkey ").unwrap().trim();
+            match crate::wireguard::wg_pubkey(hex) {
+                Ok(pub_hex) => println!("{}", pub_hex),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        // mDNS / DNS-SD
+        "mdns-list" => { println!("{}", crate::mdns::list_services()); }
+        "mdns-info" => { println!("{}", crate::mdns::mdns_info()); }
+        "mdns-stats" => { println!("{}", crate::mdns::mdns_stats()); }
+        cmd if cmd.starts_with("mdns-browse ") => {
+            let svc_type = cmd.strip_prefix("mdns-browse ").unwrap().trim();
+            let results = crate::mdns::browse(svc_type);
+            if results.is_empty() {
+                println!("No services found for type '{}'", svc_type);
+            } else {
+                for svc in &results {
+                    println!("  {} ({}:{}) host={}", svc.name, svc.service_type, svc.port, svc.hostname);
+                }
+            }
+        }
+        cmd if cmd.starts_with("mdns-resolve ") => {
+            let host = cmd.strip_prefix("mdns-resolve ").unwrap().trim();
+            match crate::mdns::resolve(host) {
+                Some(ip) => println!("{} -> {}.{}.{}.{}", host, ip[0], ip[1], ip[2], ip[3]),
+                None => println!("Could not resolve '{}'", host),
+            }
+        }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),

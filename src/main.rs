@@ -110,6 +110,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     wasi::init();
     veth::init();
     bridge::init();
+    iptables::init();
+    vlan::init();
     elf_runtime::init();
     debuginfo::init();
     crypto_ext::init();
@@ -142,6 +144,12 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     perf_events::init();
     cgroup::init();
     vim::init();
+    ftpd::init();
+    http2::init();
+    dhcpd::init();
+    ntp::init();
+    wireguard::init();
+    mdns::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
