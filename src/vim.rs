@@ -156,8 +156,12 @@ impl Buffer {
                 None => return Err("No filename"),
             },
         };
-        // We need to copy the path out before the mutable borrow for building content
-        let target_owned = String::from(target);
+        // Ensure absolute path — default to /tmp/ if no leading slash
+        let target_owned = if target.starts_with('/') {
+            String::from(target)
+        } else {
+            alloc::format!("/tmp/{}", target)
+        };
         let mut content = String::new();
         for (i, line) in self.lines.iter().enumerate() {
             content.push_str(line);
