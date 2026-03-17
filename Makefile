@@ -1,4 +1,4 @@
-.PHONY: build run run-serial run-fullscreen run-disk disk test limine-kernel iso run-uefi run-uefi-mac usb pi pi-img run-pi run-pi-virt pi-sd clean
+.PHONY: build run run-serial run-fullscreen run-disk disk test limine-kernel iso run-uefi run-uefi-mac usb pi pi-img run-pi run-pi-virt pi-sd riscv run-riscv loongarch run-loongarch clean
 
 KERNEL_BIN = target/x86_64-unknown-none/debug/bootimage-merlion-kernel.bin
 DISK_IMG = disk.img
@@ -167,6 +167,36 @@ pi-sd: pi-img
 	@echo "   cp pi-config.txt /Volumes/boot/config.txt"
 	@echo "4. Insert SD card in Pi and power on"
 	@echo "5. Connect serial cable to GPIO 14/15"
+
+# -------------------------------------------------------
+# RISC-V (riscv64)
+# -------------------------------------------------------
+
+RISCV_KERNEL = target/riscv64gc-unknown-none-elf/release/merlion-riscv
+
+riscv:
+	RUSTFLAGS="-C link-arg=-T$(CURDIR)/linker-riscv.ld" \
+	cargo build --bin merlion-riscv --target riscv64gc-unknown-none-elf --release
+	@echo "RISC-V kernel: $(RISCV_KERNEL)"
+
+run-riscv: riscv
+	qemu-system-riscv64 -machine virt -m 256M -serial stdio -display none \
+		-bios default -kernel $(RISCV_KERNEL)
+
+# -------------------------------------------------------
+# LoongArch (loongarch64)
+# -------------------------------------------------------
+
+LOONGARCH_KERNEL = target/loongarch64-unknown-none/release/merlion-loongarch
+
+loongarch:
+	RUSTFLAGS="-C link-arg=-T$(CURDIR)/linker-loongarch.ld" \
+	cargo build --bin merlion-loongarch --target loongarch64-unknown-none --release
+	@echo "LoongArch kernel: $(LOONGARCH_KERNEL)"
+
+run-loongarch: loongarch
+	qemu-system-loongarch64 -machine virt -m 256M -serial stdio -display none \
+		-kernel $(LOONGARCH_KERNEL)
 
 clean:
 	cargo clean

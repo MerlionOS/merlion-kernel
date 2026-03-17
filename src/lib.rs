@@ -8,6 +8,8 @@ pub mod acl;
 pub mod acpi;
 pub mod acpi_tables;
 pub mod arch_aarch64;
+pub mod arch_riscv64;
+pub mod arch_loongarch;
 pub mod agent;
 pub mod agent_sched;
 pub mod ahci;

@@ -30,6 +30,14 @@ path = "src/main_limine.rs"
 name = "merlion-pi"
 path = "src/main_pi.rs"
 
+[[bin]]
+name = "merlion-riscv"
+path = "src/main_riscv.rs"
+
+[[bin]]
+name = "merlion-loongarch"
+path = "src/main_loongarch.rs"
+
 [package.metadata.bootimage]
 test-args = [
     "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
