@@ -107,6 +107,12 @@ extern "x86-interrupt" fn timer_handler(_stack_frame: InterruptStackFrame) {
     crate::task::timer_tick();
 }
 
+/// Send End-of-Interrupt to PIC for a given IRQ.
+/// Safety: must only be called when an interrupt is pending.
+pub unsafe fn end_of_interrupt(irq: u8) {
+    PICS.lock().notify_end_of_interrupt(PIC_OFFSET_PRIMARY + irq);
+}
+
 extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
     use x86_64::instructions::port::Port;
     use crate::keyboard;

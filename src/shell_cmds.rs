@@ -633,6 +633,8 @@ pub fn dispatch_file(cmd: &str) -> bool {
         cmd if cmd.starts_with("edit ") => {
             let path = cmd[5..].trim();
             editor::open(path);
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            x86_64::instructions::interrupts::enable();
             while editor::is_editing() {
                 x86_64::instructions::hlt();
             }
@@ -642,6 +644,12 @@ pub fn dispatch_file(cmd: &str) -> bool {
         cmd if cmd.starts_with("vim ") => {
             let path = cmd[4..].trim();
             crate::vim::start(Some(path));
+            // Send EOI to PIC so keyboard interrupts can fire again
+            // (we're still inside the keyboard interrupt handler's call chain)
+            unsafe {
+                crate::interrupts::end_of_interrupt(1); // keyboard IRQ
+            }
+            x86_64::instructions::interrupts::enable();
             while crate::vim::is_active() {
                 x86_64::instructions::hlt();
             }
@@ -650,6 +658,8 @@ pub fn dispatch_file(cmd: &str) -> bool {
         }
         "vim" => {
             crate::vim::start(None);
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            x86_64::instructions::interrupts::enable();
             while crate::vim::is_active() {
                 x86_64::instructions::hlt();
             }
@@ -1340,6 +1350,8 @@ pub fn dispatch_system(cmd: &str) -> bool {
         }
         "forth" => {
             forth::enter();
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            x86_64::instructions::interrupts::enable();
             while forth::is_running() { x86_64::instructions::hlt(); }
             println!("Forth exited.");
         }
@@ -1467,6 +1479,8 @@ pub fn dispatch_ai(cmd: &str) -> bool {
         }
         "chat" => {
             chat::enter();
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            x86_64::instructions::interrupts::enable();
             while chat::is_chatting() {
                 x86_64::instructions::hlt();
             }
