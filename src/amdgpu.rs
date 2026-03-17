@@ -40,6 +40,7 @@ const DEVICE_IDS: &[(u16, &str, &str)] = &[
     (0x6863, "Radeon Vega FE", "Vega 10"),
     // GCN 4 (Polaris)
     (0x67DF, "Radeon RX 580", "Polaris 10"),
+    (0x67EF, "Radeon Pro 560/555", "Polaris 11 (Baffin)"),
     (0x67FF, "Radeon RX 560", "Polaris 11"),
     // APU (integrated)
     (0x1636, "Radeon Vega 8 (Renoir)", "Renoir"),
@@ -359,6 +360,7 @@ fn detect_vram_mb(bar0_virt: u64, bar2_size: u64, device_id: u16) -> u32 {
         0x687F => 8192,  // Vega 64 = 8 GB
         0x6863 => 16384, // Vega FE = 16 GB
         0x67DF => 8192,  // RX 580 = 8 GB
+        0x67EF => 4096,  // Radeon Pro 560 = 4 GB
         0x67FF => 4096,  // RX 560 = 4 GB
         _ => 0,
     }
