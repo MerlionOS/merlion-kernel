@@ -20,16 +20,23 @@ pub fn scan_all_gpus() -> String {
             let class = ((class_rev >> 24) & 0xFF) as u8;
 
             // Class 0x03 = Display controller
-            if class != 0x03 { continue; }
+            // Class 0x12 = Processing accelerator (NPU/AI)
+            // Class 0x04 subclass 0x80 = some AI accelerators
+            if class != 0x03 && class != 0x12 { continue; }
 
             let dev_id = (pci::pci_read32(bus, device, 0, 0x00) >> 16) as u16;
             let subsys = pci::pci_read32(bus, device, 0, 0x2C);
             let subsys_vendor = (subsys & 0xFFFF) as u16;
 
+            let dev_type = if class == 0x12 { "Accelerator" } else { "GPU" };
+
             let vendor_name = match vendor {
                 0x1002 => "AMD/ATI",
                 0x8086 => "Intel",
                 0x10DE => "NVIDIA",
+                0x19E5 => "Huawei (HiSilicon)",
+                0x1D94 => "Cambricon",
+                0x1E3B => "Enflame",
                 0x1A03 => "ASPEED",
                 0x1234 => "QEMU/Bochs",
                 _ => "Unknown",
@@ -40,8 +47,8 @@ pub fn scan_all_gpus() -> String {
 
             found += 1;
             out.push_str(&format!(
-                "GPU #{}: {} {} [{:04x}:{:04x}] at {:02x}:{:02x}.0",
-                found, vendor_name, gpu_name, vendor, dev_id, bus, device
+                "{} #{}: {} {} [{:04x}:{:04x}] at {:02x}:{:02x}.0",
+                dev_type, found, vendor_name, gpu_name, vendor, dev_id, bus, device
             ));
             if board != "Unknown" {
                 out.push_str(&format!(" ({})", board));
@@ -70,6 +77,32 @@ fn identify_gpu(vendor: u16, dev_id: u16) -> &'static str {
         // NVIDIA — use nvidia_gpu module's table
         (0x10DE, id) => crate::nvidia_gpu::lookup_device_name(id),
 
+        // Huawei Ascend (昇腾)
+        (0x19E5, 0xD100) => "Ascend 310 (AI Inference)",
+        (0x19E5, 0xD200) => "Ascend 310P (AI Inference)",
+        (0x19E5, 0xD500) => "Ascend 910 (AI Training)",
+        (0x19E5, 0xD501) => "Ascend 910B (AI Training)",
+        (0x19E5, 0xD800) => "Ascend 310B (Edge AI)",
+        (0x19E5, _) => "Ascend (Unknown model)",
+
+        // Cambricon (寒武纪)
+        (0x1D94, 0x0270) => "MLU270 (AI Training)",
+        (0x1D94, 0x0370) => "MLU370 (AI Training/Inference)",
+        (0x1D94, 0x0590) => "MLU590 (AI Training)",
+        (0x1D94, _) => "MLU (Unknown model)",
+
+        // Enflame (燧原科技)
+        (0x1E3B, 0x0001) => "GCU CloudBlazer i20 (AI Training)",
+        (0x1E3B, 0x0002) => "GCU CloudBlazer i10 (AI Inference)",
+        (0x1E3B, _) => "GCU (Unknown model)",
+
+        // Biren (壁仞科技)
+        // Moore Threads (摩尔线程)
+        (0x1ED5, 0x0100) => "MTT S80 (GPU)",
+        (0x1ED5, 0x0101) => "MTT S60 (GPU)",
+        (0x1ED5, 0x0200) => "MTT S4000 (Data Center GPU)",
+        (0x1ED5, _) => "MTT (Unknown model)",
+
         // QEMU
         (0x1234, 0x1111) => "Standard VGA",
         (0x1234, _) => "VGA",
@@ -94,6 +127,10 @@ fn board_vendor(subsys_vendor: u16) -> &'static str {
         0x1849 => "ASRock",
         0x103C => "HP",
         0x1028 => "Dell",
+        0x19E5 => "Huawei",
+        0x1D94 => "Cambricon",
+        0x1E3B => "Enflame",
+        0x1ED5 => "Moore Threads",
         0x17AA => "Lenovo",
         0x1025 => "Acer",
         0x8086 => "Intel",
