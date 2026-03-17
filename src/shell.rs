@@ -3533,6 +3533,157 @@ pub fn dispatch(cmd: &str) {
         _ if cmd.starts_with("type ") => crate::bash::cmd_type(&cmd[5..]),
         _ if cmd.starts_with("export ") => crate::bash::cmd_export(&cmd[7..]),
 
+        // -- v96: NFS Client --
+        cmd if cmd.starts_with("nfs-mount ") => {
+            let rest = cmd.strip_prefix("nfs-mount ").unwrap().trim();
+            if let Some((spec, mountpoint)) = rest.split_once(' ') {
+                match crate::nfs_client::parse_server_export(spec) {
+                    Ok((ip, export)) => {
+                        match crate::nfs_client::mount_nfs(ip, export, mountpoint.trim()) {
+                            Ok(()) => println!("NFS mounted {}.{}.{}.{}:{} on {}",
+                                ip[0], ip[1], ip[2], ip[3], export, mountpoint.trim()),
+                            Err(e) => println!("nfs-mount: {:?}", e),
+                        }
+                    }
+                    Err(e) => println!("nfs-mount: {:?}", e),
+                }
+            } else {
+                println!("usage: nfs-mount <server>:<export> <mountpoint>");
+            }
+        }
+        cmd if cmd.starts_with("nfs-unmount ") => {
+            let mp = cmd.strip_prefix("nfs-unmount ").unwrap().trim();
+            match crate::nfs_client::unmount_nfs(mp) {
+                Ok(()) => println!("NFS unmounted {}", mp),
+                Err(e) => println!("nfs-unmount: {:?}", e),
+            }
+        }
+        "nfs-mounts" => { println!("{}", crate::nfs_client::list_mounts()); }
+        "nfs-info" => { println!("{}", crate::nfs_client::nfs_info()); }
+        "nfs-stats" => { println!("{}", crate::nfs_client::nfs_stats()); }
+
+        // -- v97: Performance Optimization --
+        "io-sched" => { println!("{}", crate::perf_opt::io_sched_info()); }
+        cmd if cmd.starts_with("io-sched-set ") => {
+            let rest = cmd.strip_prefix("io-sched-set ").unwrap().trim();
+            if let Some((dev, sched)) = rest.split_once(' ') {
+                match crate::perf_opt::set_scheduler(dev.trim(), sched.trim()) {
+                    Ok(()) => println!("Scheduler for {} set to {}", dev.trim(), sched.trim()),
+                    Err(e) => println!("io-sched-set: {}", e),
+                }
+            } else {
+                println!("usage: io-sched-set <device> <noop|deadline|cfq|bfq>");
+            }
+        }
+        "bench-all" => { println!("{}", crate::perf_opt::run_all_benchmarks()); }
+        "bench-cpu" => { println!("{}", crate::perf_opt::run_benchmark("cpu")); }
+        "bench-mem" => { println!("{}", crate::perf_opt::run_benchmark("mem")); }
+        "bench-io" => { println!("{}", crate::perf_opt::run_benchmark("io")); }
+        "bench-net" => { println!("{}", crate::perf_opt::run_benchmark("net")); }
+        "thp-info" => { println!("{}", crate::perf_opt::thp_info()); }
+        "perf-opt-info" => { println!("{}", crate::perf_opt::perf_opt_info()); }
+        "perf-opt-stats" => { println!("{}", crate::perf_opt::perf_opt_stats()); }
+
+        // -- v93: PAM Authentication --
+        "pam-info" => { println!("{}", crate::pam::pam_info()); }
+        "pam-stats" => { println!("{}", crate::pam::pam_stats()); }
+        "pam-services" => { println!("{}", crate::pam::list_services()); }
+        "pam-sessions" => { println!("{}", crate::pam::list_sessions()); }
+
+        // -- v94: OCI Container Runtime --
+        cmd if cmd.starts_with("container ") => {
+            let args = cmd.strip_prefix("container ").unwrap().trim();
+            println!("{}", crate::oci_runtime::handle_command(args));
+        }
+        "oci-info" => { println!("{}", crate::oci_runtime::oci_info()); }
+        "oci-stats" => { println!("{}", crate::oci_runtime::oci_stats()); }
+
+        // -- v95: KVM Virtualization --
+        "vm-list" => { println!("{}", crate::kvm::list_vms()); }
+        cmd if cmd.starts_with("vm-create ") => {
+            let rest = cmd.strip_prefix("vm-create ").unwrap().trim();
+            if let Some((name, mem_str)) = rest.split_once(' ') {
+                if let Ok(mem) = mem_str.trim().parse::<u32>() {
+                    match crate::kvm::create_vm(name.trim(), mem) {
+                        Ok(id) => println!("VM '{}' created (ID: {}, {} MB)", name.trim(), id, mem),
+                        Err(e) => println!("vm-create: {}", e),
+                    }
+                } else {
+                    println!("usage: vm-create <name> <memory_mb>");
+                }
+            } else {
+                println!("usage: vm-create <name> <memory_mb>");
+            }
+        }
+        cmd if cmd.starts_with("vm-start ") => {
+            let id_str = cmd.strip_prefix("vm-start ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::start_vm(id) {
+                    Ok(()) => println!("VM {} started", id),
+                    Err(e) => println!("vm-start: {}", e),
+                }
+            } else {
+                println!("usage: vm-start <id>");
+            }
+        }
+        cmd if cmd.starts_with("vm-stop ") => {
+            let id_str = cmd.strip_prefix("vm-stop ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::stop_vm(id) {
+                    Ok(()) => println!("VM {} stopped", id),
+                    Err(e) => println!("vm-stop: {}", e),
+                }
+            } else {
+                println!("usage: vm-stop <id>");
+            }
+        }
+        cmd if cmd.starts_with("vm-destroy ") => {
+            let id_str = cmd.strip_prefix("vm-destroy ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::destroy_vm(id) {
+                    Ok(()) => println!("VM {} destroyed", id),
+                    Err(e) => println!("vm-destroy: {}", e),
+                }
+            } else {
+                println!("usage: vm-destroy <id>");
+            }
+        }
+        cmd if cmd.starts_with("vm-info ") => {
+            let id_str = cmd.strip_prefix("vm-info ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::vm_info(id) {
+                    Ok(info) => println!("{}", info),
+                    Err(e) => println!("vm-info: {}", e),
+                }
+            } else {
+                println!("usage: vm-info <id>");
+            }
+        }
+        cmd if cmd.starts_with("vm-console ") => {
+            let id_str = cmd.strip_prefix("vm-console ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::vm_console(id) {
+                    Ok(out) => println!("{}", out),
+                    Err(e) => println!("vm-console: {}", e),
+                }
+            } else {
+                println!("usage: vm-console <id>");
+            }
+        }
+        cmd if cmd.starts_with("vm-regs ") => {
+            let id_str = cmd.strip_prefix("vm-regs ").unwrap().trim();
+            if let Ok(id) = id_str.parse::<u32>() {
+                match crate::kvm::guest_regs(id) {
+                    Ok(info) => println!("{}", info),
+                    Err(e) => println!("vm-regs: {}", e),
+                }
+            } else {
+                println!("usage: vm-regs <id>");
+            }
+        }
+        "kvm-info" => { println!("{}", crate::kvm::kvm_info()); }
+        "kvm-stats" => { println!("{}", crate::kvm::kvm_stats()); }
+
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {
