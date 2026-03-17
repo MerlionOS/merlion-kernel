@@ -2,11 +2,20 @@
 
 ## Project Overview
 
-MerlionOS is a Singapore-inspired AI-native hobby operating system kernel written in Rust for x86_64.
+MerlionOS is a Singapore-inspired AI-native hobby operating system kernel written in Rust, targeting four CPU architectures: x86_64, aarch64 (Raspberry Pi), riscv64 (RISC-V), and loongarch64 (LoongArch).
 
 > **Born for AI. Built by AI.** — 生于AI，成于AI
 
-It boots in QEMU, runs a shell with 90+ commands, and supports preemptive multitasking, user-mode processes with per-process page tables, IPC, VFS, real virtio-blk/net drivers, ELF loading, TCP/IP, framebuffer graphics, AI native features (NL shell, agents, self-healing), and ACPI power management. 58 source modules, ~9700 lines of Rust.
+It boots in QEMU, runs a shell with 358 commands, and supports preemptive multitasking, user-mode processes with per-process page tables, IPC, VFS, real virtio-blk/net drivers, ELF loading, TCP/IP, framebuffer graphics, AI native features (NL shell, agents, self-healing), and ACPI power management. 253 source modules, 85,928 lines of Rust.
+
+## Architecture Targets
+
+| Architecture | Target Triple | Build | Run |
+|---|---|---|---|
+| x86_64 | `x86_64-unknown-none` | `make build` / `make iso` | `make run` / `make run-uefi-mac` |
+| aarch64 | `aarch64-unknown-none` | `make pi` | `make run-pi` |
+| riscv64 | `riscv64gc-unknown-none-elf` | `make riscv` | `make run-riscv` |
+| loongarch64 | `loongarch64-unknown-none` | `make loongarch` | `make run-loongarch` |
 
 ## Build & Run
 
@@ -16,7 +25,7 @@ make run         # QEMU with VGA window + serial on terminal
 make run-serial  # headless, serial only
 ```
 
-Requires: Rust nightly (via rust-toolchain.toml), rust-src, llvm-tools, cargo-bootimage, qemu-system-x86_64.
+Requires: Rust nightly (via rust-toolchain.toml), rust-src, llvm-tools, cargo-bootimage, qemu-system-x86_64 (+ qemu-system-aarch64, qemu-system-riscv64, qemu-system-loongarch64 for other architectures).
 
 ## Architecture
 
