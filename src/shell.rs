@@ -486,6 +486,25 @@ pub fn dispatch(cmd: &str) {
             println!("  mdns-list    - list mDNS services");
             println!("  mdns-browse <type> - browse services");
             println!("  mdns-resolve <host> - resolve .local host");
+            println!("Proxy & tunnel:");
+            println!("  socks5-status  - SOCKS5 proxy info");
+            println!("  socks5-start <port> - start SOCKS5 proxy");
+            println!("  socks5-stop    - stop SOCKS5 proxy");
+            println!("  proxy-status   - HTTP proxy info");
+            println!("  proxy-start <port> - start HTTP proxy");
+            println!("  pppoe-connect <user> <pass> - PPPoE dial");
+            println!("  pppoe-status   - PPPoE session status");
+            println!("  pppoe-disconnect - disconnect PPPoE");
+            println!("Routing protocols:");
+            println!("  ospf-info      - OSPF protocol info");
+            println!("  ospf-neighbors - OSPF neighbor table");
+            println!("  ospf-routes    - OSPF routing table");
+            println!("  ospf-lsdb      - OSPF link-state database");
+            println!("  bgp-info       - BGP protocol info");
+            println!("  bgp-peers      - BGP peer table");
+            println!("  bgp-routes     - BGP routing table");
+            println!("  rip-info       - RIP protocol info");
+            println!("  rip-routes     - RIP routing table");
             println!("System management:");
             println!("  who          - logged in users");
             println!("  w            - who + activity");
@@ -2783,6 +2802,89 @@ pub fn dispatch(cmd: &str) {
         "tcp-ext-stats" => { println!("{}", crate::tcp_ext::tcp_ext_stats()); }
         "tfo-stats" => { println!("{}", crate::tcp_ext::tfo_stats()); }
         "sack-stats" => { println!("{}", crate::tcp_ext::sack_stats()); }
+
+        // SOCKS5 proxy
+        "socks5-status" => { println!("{}", crate::socks5::socks5_info()); }
+        "socks5-stats" => { println!("{}", crate::socks5::socks5_stats()); }
+        "socks5-sessions" => { println!("{}", crate::socks5::list_sessions()); }
+        "socks5-stop" => {
+            crate::socks5::stop();
+            println!("SOCKS5 proxy stopped");
+        }
+        cmd if cmd.starts_with("socks5-start ") => {
+            let port_str = cmd.strip_prefix("socks5-start ").unwrap().trim();
+            if let Ok(port) = port_str.parse::<u16>() {
+                crate::socks5::start(port);
+                println!("SOCKS5 proxy started on port {}", port);
+            } else {
+                println!("Usage: socks5-start <port>");
+            }
+        }
+        "socks5-start" => {
+            crate::socks5::start(1080);
+            println!("SOCKS5 proxy started on port 1080");
+        }
+
+        // HTTP proxy
+        "proxy-status" => { println!("{}", crate::http_proxy::proxy_info()); }
+        "proxy-stats" => { println!("{}", crate::http_proxy::proxy_stats()); }
+        "proxy-connections" => { println!("{}", crate::http_proxy::list_connections()); }
+        "proxy-stop" => {
+            crate::http_proxy::stop();
+            println!("HTTP proxy stopped");
+        }
+        cmd if cmd.starts_with("proxy-start ") => {
+            let port_str = cmd.strip_prefix("proxy-start ").unwrap().trim();
+            if let Ok(port) = port_str.parse::<u16>() {
+                crate::http_proxy::start(port);
+                println!("HTTP proxy started on port {}", port);
+            } else {
+                println!("Usage: proxy-start <port>");
+            }
+        }
+        "proxy-start" => {
+            crate::http_proxy::start(8080);
+            println!("HTTP proxy started on port 8080");
+        }
+
+        // PPPoE
+        "pppoe-status" => { println!("{}", crate::pppoe::pppoe_status()); }
+        "pppoe-info" => { println!("{}", crate::pppoe::pppoe_info()); }
+        "pppoe-stats" => { println!("{}", crate::pppoe::pppoe_stats()); }
+        "pppoe-disconnect" => {
+            crate::pppoe::pppoe_disconnect_all();
+            println!("PPPoE disconnected");
+        }
+        cmd if cmd.starts_with("pppoe-connect ") => {
+            let args = cmd.strip_prefix("pppoe-connect ").unwrap().trim();
+            let parts: alloc::vec::Vec<&str> = args.splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                match crate::pppoe::pppoe_connect(parts[0], parts[1]) {
+                    Ok(info) => println!("{}", info),
+                    Err(e) => println!("PPPoE connect failed: {}", e),
+                }
+            } else {
+                println!("Usage: pppoe-connect <username> <password>");
+            }
+        }
+
+        // OSPF routing protocol
+        "ospf-info" => { println!("{}", crate::ospf::ospf_info()); }
+        "ospf-neighbors" => { println!("{}", crate::ospf::list_neighbors()); }
+        "ospf-routes" => { println!("{}", crate::ospf::show_routes()); }
+        "ospf-lsdb" => { println!("{}", crate::ospf::show_lsdb()); }
+        "ospf-stats" => { println!("{}", crate::ospf::ospf_stats()); }
+
+        // BGP routing protocol
+        "bgp-info" => { println!("{}", crate::bgp::bgp_info()); }
+        "bgp-peers" => { println!("{}", crate::bgp::list_peers()); }
+        "bgp-routes" => { println!("{}", crate::bgp::show_routes()); }
+        "bgp-stats" => { println!("{}", crate::bgp::bgp_stats()); }
+
+        // RIP routing protocol
+        "rip-info" => { println!("{}", crate::rip::rip_info()); }
+        "rip-routes" => { println!("{}", crate::rip::show_routes()); }
+        "rip-stats" => { println!("{}", crate::rip::rip_stats()); }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),

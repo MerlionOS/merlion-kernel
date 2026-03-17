@@ -152,7 +152,13 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     dhcpd::init();
     ntp::init();
     wireguard::init();
+    socks5::init();
+    http_proxy::init();
+    pppoe::init();
     mdns::init();
+    ospf::init();
+    bgp::init();
+    rip::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
