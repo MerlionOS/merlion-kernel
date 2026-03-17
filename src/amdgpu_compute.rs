@@ -67,7 +67,7 @@ const COMPUTE_NUM_THREAD_Y: u32 = 0x2E24;
 const COMPUTE_NUM_THREAD_Z: u32 = 0x2E28;
 
 // Simulation limits
-const SIM_VRAM_SIZE: usize = 16 * 1024 * 1024; // 16 MB simulated VRAM
+const SIM_VRAM_SIZE: usize = 64 * 1024; // 64 KB simulated VRAM (save heap)
 const RING_SIZE_DWORDS: usize = 8192;
 
 // Allocation ID counter

@@ -40,7 +40,7 @@ const MEDIA_CURBE_LOAD: u32 = 0x01;
 const MEDIA_INTERFACE_DESCRIPTOR_LOAD: u32 = 0x02;
 
 // Simulation limits
-const SIM_VRAM_SIZE: usize = 16 * 1024 * 1024; // 16 MB simulated VRAM
+const SIM_VRAM_SIZE: usize = 64 * 1024; // 64 KB simulated VRAM (save heap)
 const RING_SIZE_DWORDS: usize = 8192;
 
 // Page size for GGTT
