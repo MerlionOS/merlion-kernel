@@ -312,4 +312,7 @@ pub mod oci_runtime;
 pub mod kvm;
 pub mod llm;
 pub mod ai_admin;
+pub mod blake3;
+pub mod ed25519;
+pub mod qfc_miner;
 pub mod self_host;

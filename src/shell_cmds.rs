@@ -2990,6 +2990,37 @@ pub fn dispatch_advanced(cmd: &str) -> bool {
         }
         "pkg-stats" => { println!("{}", crate::pkg_registry::registry_stats()); }
 
+        // QFC blockchain mining
+        cmd if cmd.starts_with("qfc-mine ") => {
+            let args = cmd.strip_prefix("qfc-mine ").unwrap().trim();
+            println!("{}", crate::qfc_miner::cmd_mine(args));
+        }
+        "qfc-mine" => { println!("{}", crate::qfc_miner::cmd_mine("")); }
+        cmd if cmd.starts_with("qfc-pow ") => {
+            let args = cmd.strip_prefix("qfc-pow ").unwrap().trim();
+            println!("{}", crate::qfc_miner::cmd_pow(args));
+        }
+        "qfc-pow" => { println!("{}", crate::qfc_miner::cmd_pow("")); }
+        "qfc-status" => { println!("{}", crate::qfc_miner::cmd_status()); }
+        cmd if cmd.starts_with("qfc-wallet ") => {
+            let args = cmd.strip_prefix("qfc-wallet ").unwrap().trim();
+            println!("{}", crate::qfc_miner::cmd_wallet(args));
+        }
+        "qfc-wallet" => { println!("{}", crate::qfc_miner::cmd_wallet("")); }
+        cmd if cmd.starts_with("qfc-hash ") => {
+            let args = cmd.strip_prefix("qfc-hash ").unwrap().trim();
+            println!("{}", crate::qfc_miner::cmd_hash(args));
+        }
+        "qfc-hash" => { println!("{}", crate::qfc_miner::cmd_hash("")); }
+        cmd if cmd.starts_with("qfc-sign ") => {
+            let args = cmd.strip_prefix("qfc-sign ").unwrap().trim();
+            println!("{}", crate::qfc_miner::cmd_sign(args));
+        }
+        "qfc-sign" => { println!("{}", crate::qfc_miner::cmd_sign("")); }
+        "qfc-info" => { println!("{}", crate::qfc_miner::qfc_miner_info()); }
+        "blake3-info" => { println!("{}", crate::blake3::blake3_info()); }
+        "ed25519-info" => { println!("{}", crate::ed25519::ed25519_info()); }
+
         _ => return false,
     }
     true
