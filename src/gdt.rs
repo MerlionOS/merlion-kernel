@@ -35,34 +35,43 @@ static TSS: Lazy<TaskStateSegment> = Lazy::new(|| {
 /// GDT layout:
 ///   0: null descriptor
 ///   1: kernel code (0x08)
-///   2-3: TSS (occupies two entries: 0x10, 0x18)
-///   4: user data (0x20, with RPL=3 → selector 0x23)
-///   5: user code (0x28, with RPL=3 → selector 0x2B)
+///   2: kernel data (0x10)
+///   3-4: TSS (occupies two entries: 0x18, 0x20)
+///   5: user data (0x28, with RPL=3 → selector 0x2B)
+///   6: user code (0x30, with RPL=3 → selector 0x33)
 static GDT: Lazy<(GlobalDescriptorTable, Selectors)> = Lazy::new(|| {
     let mut gdt = GlobalDescriptorTable::new();
     let kernel_code = gdt.add_entry(Descriptor::kernel_code_segment());
+    let kernel_data = gdt.add_entry(Descriptor::kernel_data_segment());
     let tss = gdt.add_entry(Descriptor::tss_segment(&TSS));
     let user_data = gdt.add_entry(Descriptor::user_data_segment());
     let user_code = gdt.add_entry(Descriptor::user_code_segment());
-    (gdt, Selectors { kernel_code, tss, user_data, user_code })
+    (gdt, Selectors { kernel_code, kernel_data, tss, user_data, user_code })
 });
 
 #[allow(dead_code)]
 pub struct Selectors {
     pub kernel_code: SegmentSelector,
+    pub kernel_data: SegmentSelector,
     pub tss: SegmentSelector,
     pub user_data: SegmentSelector,
     pub user_code: SegmentSelector,
 }
 
-/// Load the GDT and set CS and TSS segment registers.
+/// Load the GDT and set CS, data segment registers, and TSS.
+/// DS/ES/SS must be set explicitly after loading the GDT because
+/// Limine boot leaves stale segment selectors that cause a double
+/// fault when the kernel later maps heap pages.
 pub fn init() {
-    use x86_64::instructions::segmentation::{CS, Segment};
+    use x86_64::instructions::segmentation::{CS, DS, ES, SS, Segment};
     use x86_64::instructions::tables::load_tss;
 
     GDT.0.load();
     unsafe {
         CS::set_reg(GDT.1.kernel_code);
+        DS::set_reg(GDT.1.kernel_data);
+        ES::set_reg(GDT.1.kernel_data);
+        SS::set_reg(GDT.1.kernel_data);
         load_tss(GDT.1.tss);
     }
 }

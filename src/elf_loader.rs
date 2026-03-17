@@ -178,8 +178,8 @@ fn find_file_offset(elf_data: &[u8], seg_vaddr: u64, page_offset: u64) -> Option
 }
 
 fn enter_user(pml4_phys: u64, code_addr: u64, stack_top: u64) {
-    let user_data_seg: u64 = (4 << 3) | 3;
-    let user_code_seg: u64 = (5 << 3) | 3;
+    let user_data_seg: u64 = (5 << 3) | 3;
+    let user_code_seg: u64 = (6 << 3) | 3;
 
     unsafe {
         core::arch::asm!(

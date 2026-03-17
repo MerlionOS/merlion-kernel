@@ -179,8 +179,8 @@ fn cleanup_process(task_slot: usize) {
 }
 
 fn enter_ring3(pml4_phys: PhysAddr, code_addr: u64, stack_top: u64) {
-    let user_data_seg: u64 = (4 << 3) | 3;
-    let user_code_seg: u64 = (5 << 3) | 3;
+    let user_data_seg: u64 = (5 << 3) | 3;
+    let user_code_seg: u64 = (6 << 3) | 3;
 
     unsafe {
         core::arch::asm!(
