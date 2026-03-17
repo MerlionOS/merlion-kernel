@@ -67,22 +67,8 @@ fn identify_gpu(vendor: u16, dev_id: u16) -> &'static str {
         // Intel — use intel_gpu module's table
         (0x8086, id) => crate::intel_gpu::lookup_device_name(id),
 
-        // NVIDIA
-        (0x10DE, 0x2684) => "RTX 4090",
-        (0x10DE, 0x2704) => "RTX 4080",
-        (0x10DE, 0x2782) => "RTX 4070 Ti",
-        (0x10DE, 0x2786) => "RTX 4070",
-        (0x10DE, 0x2204) => "RTX 3090",
-        (0x10DE, 0x2206) => "RTX 3080",
-        (0x10DE, 0x2484) => "RTX 3070",
-        (0x10DE, 0x2504) => "RTX 3060 Ti",
-        (0x10DE, 0x2560) => "RTX 3060",
-        (0x10DE, 0x1E04) => "RTX 2080 Ti",
-        (0x10DE, 0x1E07) => "RTX 2080",
-        (0x10DE, 0x1F08) => "RTX 2060",
-        (0x10DE, 0x1B80) => "GTX 1080",
-        (0x10DE, 0x1B06) => "GTX 1080 Ti",
-        (0x10DE, 0x1C82) => "GTX 1050 Ti",
+        // NVIDIA — use nvidia_gpu module's table
+        (0x10DE, id) => crate::nvidia_gpu::lookup_device_name(id),
 
         // QEMU
         (0x1234, 0x1111) => "Standard VGA",

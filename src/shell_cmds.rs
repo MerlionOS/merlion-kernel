@@ -246,6 +246,7 @@ pub fn help_text() {
     println!("  gpu-dispatch <n> - dispatch test matmul");
     println!("  gpu-bench-compute - compute benchmark");
     println!("  gpu-dma-test - test DMA copy");
+    println!("  nvidia-gpu-info   - NVIDIA GPU device info");
     println!("  intel-gpu-info    - Intel GPU device info");
     println!("  intel-gpu-compute - Intel GPU compute status");
     println!("  intel-gpu-bench   - Intel GPU compute benchmark");
@@ -2062,6 +2063,9 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
                 println!("{}", crate::intel_gpu::intel_gpu_info());
                 println!("{}", crate::intel_gpu_compute::compute_info());
             }
+            if crate::nvidia_gpu::is_detected() {
+                println!("{}", crate::nvidia_gpu::nvidia_gpu_info());
+            }
         }
         "gpu-regs" => {
             println!("{}", amdgpu::amdgpu_stats());
@@ -2243,6 +2247,14 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
         cmd if cmd.starts_with("gpu-dispatch ") => {
             let arg = cmd.strip_prefix("gpu-dispatch ").unwrap().trim();
             println!("{}", crate::amdgpu_compute::dispatch_test(arg));
+        }
+
+        // NVIDIA GPU
+        "nvidia-gpu-info" => {
+            println!("{}", crate::nvidia_gpu::nvidia_gpu_info());
+        }
+        "nvidia-gpu-stats" => {
+            println!("{}", crate::nvidia_gpu::nvidia_gpu_stats());
         }
 
         // Intel GPU

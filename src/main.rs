@@ -72,6 +72,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     amdgpu_compute::init();
     intel_gpu::init();
     intel_gpu_compute::init();
+    nvidia_gpu::init();
     netstack::init();
     usb_hid::init();
     security::init();
