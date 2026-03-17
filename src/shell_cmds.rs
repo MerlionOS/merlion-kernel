@@ -241,6 +241,11 @@ pub fn help_text() {
     println!("  gpu-stats    - GPU compute statistics");
     println!("  gpu-bench    - GPU benchmark");
     println!("  gpu-buffers  - list GPU buffers");
+    println!("  gpu-compute  - compute engine status");
+    println!("  gpu-vram     - VRAM allocations");
+    println!("  gpu-dispatch <n> - dispatch test matmul");
+    println!("  gpu-bench-compute - compute benchmark");
+    println!("  gpu-dma-test - test DMA copy");
     println!("  bt-info      - Bluetooth controller info");
     println!("  bt-scan      - scan for BT devices");
     println!("  bt-devices   - list BT devices");
@@ -2217,6 +2222,16 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
         "gpu-stats" => { println!("{}", crate::gpu::gpu_stats()); }
         "gpu-bench" => { println!("{}", crate::gpu::benchmark()); }
         "gpu-buffers" => { println!("{}", crate::gpu::list_buffers()); }
+
+        // GPU Compute
+        "gpu-compute" => { println!("{}", crate::amdgpu_compute::compute_info()); }
+        "gpu-vram" => { println!("{}", crate::amdgpu_compute::vram_info()); }
+        "gpu-bench-compute" => { println!("{}", crate::amdgpu_compute::benchmark()); }
+        "gpu-dma-test" => { println!("{}", crate::amdgpu_compute::dma_test()); }
+        cmd if cmd.starts_with("gpu-dispatch ") => {
+            let arg = cmd.strip_prefix("gpu-dispatch ").unwrap().trim();
+            println!("{}", crate::amdgpu_compute::dispatch_test(arg));
+        }
 
         // Bluetooth
         "bt-info" => { println!("{}", crate::bluetooth::bt_info()); }

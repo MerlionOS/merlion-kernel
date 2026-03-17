@@ -15,6 +15,7 @@ pub mod agent;
 pub mod agent_sched;
 pub mod ahci;
 pub mod amdgpu;
+pub mod amdgpu_compute;
 pub mod alloc_track;
 pub mod ai_http;
 pub mod ai_heal;

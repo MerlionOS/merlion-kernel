@@ -68,6 +68,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     apic_timer::init();
     e1000e::init();
     amdgpu::init();
+    amdgpu_compute::init();
     netstack::init();
     usb_hid::init();
     security::init();
