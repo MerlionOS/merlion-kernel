@@ -226,6 +226,7 @@ pub mod sysfs;
 pub mod smp;
 pub mod sshd;
 pub mod shell;
+pub mod shell_cmds;
 pub mod shell_lang;
 pub mod shmem;
 pub mod sys_info;
