@@ -246,6 +246,9 @@ pub fn help_text() {
     println!("  gpu-dispatch <n> - dispatch test matmul");
     println!("  gpu-bench-compute - compute benchmark");
     println!("  gpu-dma-test - test DMA copy");
+    println!("  intel-gpu-info    - Intel GPU device info");
+    println!("  intel-gpu-compute - Intel GPU compute status");
+    println!("  intel-gpu-bench   - Intel GPU compute benchmark");
     println!("  bt-info      - Bluetooth controller info");
     println!("  bt-scan      - scan for BT devices");
     println!("  bt-devices   - list BT devices");
@@ -2055,6 +2058,10 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
                 println!("{}", amdgpu::amdgpu_info());
                 println!("{}", crate::amdgpu_compute::compute_info());
             }
+            if crate::intel_gpu::is_detected() {
+                println!("{}", crate::intel_gpu::intel_gpu_info());
+                println!("{}", crate::intel_gpu_compute::compute_info());
+            }
         }
         "gpu-regs" => {
             println!("{}", amdgpu::amdgpu_stats());
@@ -2236,6 +2243,31 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
         cmd if cmd.starts_with("gpu-dispatch ") => {
             let arg = cmd.strip_prefix("gpu-dispatch ").unwrap().trim();
             println!("{}", crate::amdgpu_compute::dispatch_test(arg));
+        }
+
+        // Intel GPU
+        "intel-gpu-info" => {
+            println!("{}", crate::intel_gpu::intel_gpu_info());
+        }
+        "intel-gpu-compute" => {
+            println!("{}", crate::intel_gpu_compute::compute_info());
+        }
+        "intel-gpu-bench" => {
+            println!("{}", crate::intel_gpu_compute::benchmark("64"));
+        }
+        cmd if cmd.starts_with("intel-gpu-bench ") => {
+            let arg = cmd.strip_prefix("intel-gpu-bench ").unwrap().trim();
+            println!("{}", crate::intel_gpu_compute::benchmark(arg));
+        }
+        "intel-gpu-stats" => {
+            println!("{}", crate::intel_gpu::intel_gpu_stats());
+        }
+        "intel-gpu-vram" => {
+            println!("{}", crate::intel_gpu_compute::vram_info());
+        }
+        cmd if cmd.starts_with("intel-gpu-dispatch ") => {
+            let arg = cmd.strip_prefix("intel-gpu-dispatch ").unwrap().trim();
+            println!("{}", crate::intel_gpu_compute::dispatch_test(arg));
         }
 
         // Bluetooth

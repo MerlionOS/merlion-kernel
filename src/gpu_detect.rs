@@ -64,26 +64,8 @@ fn identify_gpu(vendor: u16, dev_id: u16) -> &'static str {
         // AMD — use amdgpu module's table
         (0x1002, id) => crate::amdgpu::lookup_device_name(id),
 
-        // Intel integrated
-        (0x8086, 0x0166) => "HD 4000 (Ivy Bridge)",
-        (0x8086, 0x0412) => "HD 4600 (Haswell)",
-        (0x8086, 0x1912) => "HD 530 (Skylake)",
-        (0x8086, 0x5916) => "HD 620 (Kaby Lake)",
-        (0x8086, 0x5917) => "UHD 620 (Kaby Lake)",
-        (0x8086, 0x5912) => "HD 630 (Kaby Lake)",
-        (0x8086, 0x591B) => "HD 630 (Kaby Lake-H)",
-        (0x8086, 0x3E92) => "UHD 630 (Coffee Lake)",
-        (0x8086, 0x3EA0) => "UHD 620 (Whiskey Lake)",
-        (0x8086, 0x9A49) => "Xe (Tiger Lake)",
-        (0x8086, 0x4680) => "Xe (Alder Lake)",
-        (0x8086, 0x46A6) => "Xe (Alder Lake-P)",
-        (0x8086, 0xA7A0) => "Xe (Raptor Lake)",
-        (0x8086, 0x7D55) => "Xe (Meteor Lake)",
-        // Intel Arc
-        (0x8086, 0x5690) => "Arc A770",
-        (0x8086, 0x5691) => "Arc A750",
-        (0x8086, 0x5692) => "Arc A580",
-        (0x8086, 0x56A0) => "Arc A380",
+        // Intel — use intel_gpu module's table
+        (0x8086, id) => crate::intel_gpu::lookup_device_name(id),
 
         // NVIDIA
         (0x10DE, 0x2684) => "RTX 4090",

@@ -17,6 +17,8 @@ pub mod ahci;
 pub mod amdgpu;
 pub mod amdgpu_compute;
 pub mod alloc_track;
+pub mod intel_gpu;
+pub mod intel_gpu_compute;
 pub mod ai_http;
 pub mod ai_heal;
 pub mod ai_man;
