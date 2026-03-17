@@ -72,6 +72,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     nvme::init();
     xhci::init();
     e1000e::init();
+    rtl8169::init();
+    intel_i225::init();
     netstack::init();
     usb_hid::init();
     semfs::init();
@@ -172,6 +174,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     smtp::init();
     imap::init();
     tftp::init();
+    hpnet::init();
+    zero_copy::init();
+    dpdk::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");

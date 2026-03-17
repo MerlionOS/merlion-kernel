@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, dhcp, gpt, power, forth, watch, wget, screensaver};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, dhcp, gpt, power, forth, watch, wget, screensaver, rtl8169, intel_i225};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -336,6 +336,10 @@ pub fn dispatch(cmd: &str) {
             println!("  usbdevs    - list USB devices");
             println!("  ioapicinfo - IOAPIC status");
             println!("  e1000info  - e1000e NIC status");
+            println!("  rtl8169-info  - RTL8169 NIC status");
+            println!("  rtl8169-stats - RTL8169 NIC statistics");
+            println!("  i225-info  - Intel I225 2.5GbE status");
+            println!("  i225-stats - Intel I225 2.5GbE statistics");
             println!("  nvmeinfo   - NVMe SSD status");
             println!("  gptinfo    - GPT partition table (virtio disk)");
             println!("  powerinfo  - power management status");
@@ -2020,6 +2024,34 @@ pub fn dispatch(cmd: &str) {
                 println!("e1000e NIC not detected");
             }
         }
+        "rtl8169-info" => {
+            if rtl8169::is_detected() {
+                println!("{}", rtl8169::rtl8169_info());
+            } else {
+                println!("RTL8169 NIC not detected");
+            }
+        }
+        "rtl8169-stats" => {
+            if rtl8169::is_detected() {
+                println!("{}", rtl8169::rtl8169_stats());
+            } else {
+                println!("RTL8169 NIC not detected");
+            }
+        }
+        "i225-info" => {
+            if intel_i225::is_detected() {
+                println!("{}", intel_i225::i225_info());
+            } else {
+                println!("Intel I225 NIC not detected");
+            }
+        }
+        "i225-stats" => {
+            if intel_i225::is_detected() {
+                println!("{}", intel_i225::i225_stats());
+            } else {
+                println!("Intel I225 NIC not detected");
+            }
+        }
         "nvmeinfo" => {
             if nvme::is_detected() {
                 println!("{}", nvme::info());
@@ -2984,6 +3016,21 @@ pub fn dispatch(cmd: &str) {
         "ebpf-progs" => { println!("{}", crate::ebpf::list_programs()); }
         "ebpf-stats" => { println!("{}", crate::ebpf::ebpf_stats()); }
         "xdp-info" => { println!("{}", crate::ebpf::xdp_info()); }
+
+        // High-Performance Networking (N8)
+        "hpnet-info" => { println!("{}", crate::hpnet::hpnet_info()); }
+        "hpnet-stats" => { println!("{}", crate::hpnet::hpnet_stats()); }
+        "rss-info" => { println!("{}", crate::hpnet::rss_info()); }
+
+        // Zero-Copy Networking
+        "zero-copy-info" => { println!("{}", crate::zero_copy::zero_copy_info()); }
+        "zero-copy-stats" => { println!("{}", crate::zero_copy::zero_copy_stats()); }
+
+        // DPDK-style Framework
+        "dpdk-info" => { println!("{}", crate::dpdk::dpdk_info()); }
+        "dpdk-stats" => { println!("{}", crate::dpdk::dpdk_stats()); }
+        "dpdk-bench" => { println!("{}", crate::dpdk::dpdk_benchmark(1000)); }
+        "mempool-info" => { println!("{}", crate::dpdk::mempool_info()); }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
