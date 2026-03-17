@@ -2,7 +2,7 @@
 /// Supports arrow keys (up/down for history, left/right planned),
 /// shift for uppercase, and output redirection (cmd > file).
 
-use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, dhcp, gpt, power, forth, watch, wget, screensaver, rtl8169, intel_i225};
+use crate::{print, println, serial_println, allocator, timer, task, process, ipc, vfs, memory, driver, acpi, rtc, testutil, framebuf, pci, ramdisk, net, netproto, netstack, smp, env, module, slab, ksyms, paging, virtio, virtio_blk, virtio_net, blkdev, fat, fd, locks, ai_shell, ai_proxy, ai_monitor, ai_syscall, ai_heal, ai_man, semfs, agent, script, signal, kconfig, tcp_real, elf, elf_loader, boot_info_ext, demo, snake, diskfs, editor, top, calc, coreutils, chat, fortune, bench, ahci, nvme, xhci, e1000e, ioapic, dhcp, gpt, power, forth, watch, wget, screensaver, rtl8139, rtl8169, intel_i225, usb_mass, sata};
 use crate::keyboard::KeyEvent;
 use spin::Mutex;
 
@@ -341,6 +341,14 @@ pub fn dispatch(cmd: &str) {
             println!("  i225-info  - Intel I225 2.5GbE status");
             println!("  i225-stats - Intel I225 2.5GbE statistics");
             println!("  nvmeinfo   - NVMe SSD status");
+            println!("  rtl8139-info  - RTL8139 NIC status");
+            println!("  rtl8139-stats - RTL8139 NIC statistics");
+            println!("  usb-drives - list USB mass storage devices");
+            println!("  usb-eject <n> - safely eject USB device");
+            println!("  lsscsi     - list SCSI/USB storage devices");
+            println!("  sata-info  - SATA controller and disk info");
+            println!("  sata-stats - SATA subsystem statistics");
+            println!("  smart <port> - SMART health for SATA port");
             println!("  gptinfo    - GPT partition table (virtio disk)");
             println!("  powerinfo  - power management status");
             println!("  nicsend <msg> - send raw UDP via NIC");
@@ -2038,6 +2046,64 @@ pub fn dispatch(cmd: &str) {
                 println!("RTL8169 NIC not detected");
             }
         }
+        "rtl8139-info" => {
+            if rtl8139::is_detected() {
+                println!("{}", rtl8139::rtl8139_info());
+            } else {
+                println!("RTL8139 NIC not detected");
+            }
+        }
+        "rtl8139-stats" => {
+            if rtl8139::is_detected() {
+                println!("{}", rtl8139::rtl8139_stats());
+            } else {
+                println!("RTL8139 NIC not detected");
+            }
+        }
+        "usb-drives" => {
+            println!("{}", usb_mass::usb_mass_info());
+        }
+        cmd if cmd.starts_with("usb-eject") => {
+            let arg = cmd.trim_start_matches("usb-eject").trim();
+            if let Ok(idx) = arg.parse::<usize>() {
+                match usb_mass::eject(idx) {
+                    Ok(()) => println!("USB device {} ejected safely", idx),
+                    Err(e) => println!("Eject failed: {}", e),
+                }
+            } else {
+                println!("Usage: usb-eject <device_number>");
+            }
+        }
+        "lsscsi" => {
+            // Show USB mass storage devices as SCSI-like listing
+            let devs = usb_mass::list_devices();
+            if devs.is_empty() {
+                println!("No SCSI/USB storage devices detected");
+            } else {
+                for d in &devs {
+                    println!(
+                        "[{}] usb{}  {} {}  {} MiB  {} partition(s)  {}",
+                        d.index, d.index, d.vendor, d.product,
+                        d.capacity_mb, d.partitions,
+                        if d.mounted { "mounted" } else { "not mounted" },
+                    );
+                }
+            }
+        }
+        "sata-info" => {
+            println!("{}", sata::sata_info());
+        }
+        "sata-stats" => {
+            println!("{}", sata::sata_stats());
+        }
+        cmd if cmd.starts_with("smart") => {
+            let arg = cmd.trim_start_matches("smart").trim();
+            if let Ok(port) = arg.parse::<u8>() {
+                println!("{}", sata::smart_info(port));
+            } else {
+                println!("Usage: smart <port_number>");
+            }
+        }
         "i225-info" => {
             if intel_i225::is_detected() {
                 println!("{}", intel_i225::i225_info());
@@ -3198,6 +3264,31 @@ pub fn dispatch(cmd: &str) {
         "dpdk-stats" => { println!("{}", crate::dpdk::dpdk_stats()); }
         "dpdk-bench" => { println!("{}", crate::dpdk::dpdk_benchmark(1000)); }
         "mempool-info" => { println!("{}", crate::dpdk::mempool_info()); }
+
+        // v79: Display System
+        "fb-info" => { println!("{}", crate::fb_render::fb_render_info()); }
+        "fb-stats" => { println!("{}", crate::fb_render::fb_render_stats()); }
+        "displays" => { println!("{}", crate::display_mgr::list_displays()); }
+        cmd if cmd.starts_with("display-info ") => {
+            let id_str = cmd.strip_prefix("display-info ").unwrap().trim();
+            match id_str.parse::<u32>() {
+                Ok(id) => println!("{}", crate::display_mgr::display_info(id)),
+                Err(_) => println!("display-info: invalid id"),
+            }
+        }
+        cmd if cmd.starts_with("brightness ") => {
+            let pct_str = cmd.strip_prefix("brightness ").unwrap().trim();
+            match pct_str.parse::<u8>() {
+                Ok(pct) => {
+                    match crate::display_mgr::set_brightness(0, pct) {
+                        Ok(()) => println!("Brightness set to {}%", pct),
+                        Err(e) => println!("brightness: {}", e),
+                    }
+                }
+                Err(_) => println!("brightness: invalid percentage"),
+            }
+        }
+        "term-info" => { println!("{}", crate::fb_terminal::fb_terminal_info()); }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),

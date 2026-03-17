@@ -72,10 +72,13 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     nvme::init();
     xhci::init();
     e1000e::init();
+    rtl8139::init();
     rtl8169::init();
     intel_i225::init();
     netstack::init();
     usb_hid::init();
+    usb_mass::init();
+    sata::init();
     semfs::init();
     security::init();
     capability::init();
@@ -139,6 +142,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     multi_user::init();
     service_mgr::init();
     virtio_gpu_ext::init();
+    fb_render::init();
+    display_mgr::init();
+    fb_terminal::init();
     kconfig::load();
     kconfig_ext::init();
     netdiag::init();
