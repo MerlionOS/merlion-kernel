@@ -611,6 +611,111 @@ pub fn is_detected() -> bool {
 }
 
 /// Initialize the AMD GPU driver: scan PCI, identify hardware, store state.
+/// Scan PCI for ALL GPU vendors (AMD, Intel, NVIDIA) and return a summary.
+pub fn scan_all_gpus() -> String {
+    let mut out = String::new();
+    let mut found = 0;
+
+    for bus in 0u8..8 {
+        for device in 0u8..32 {
+            let vendor = pci::pci_read32(bus, device, 0, 0x00) as u16;
+            if vendor == 0xFFFF || vendor == 0 { continue; }
+
+            let class_rev = pci::pci_read32(bus, device, 0, 0x08);
+            let class = ((class_rev >> 24) & 0xFF) as u8;
+            let _subclass = ((class_rev >> 16) & 0xFF) as u8;
+
+            // Class 0x03 = Display controller
+            if class != 0x03 { continue; }
+
+            let dev_id = (pci::pci_read32(bus, device, 0, 0x00) >> 16) as u16;
+            let subsys = pci::pci_read32(bus, device, 0, 0x2C);
+            let subsys_vendor = (subsys & 0xFFFF) as u16;
+
+            let vendor_name = match vendor {
+                0x1002 => "AMD/ATI",
+                0x8086 => "Intel",
+                0x10DE => "NVIDIA",
+                0x1A03 => "ASPEED",
+                0x1234 => "QEMU/Bochs",
+                _ => "Unknown",
+            };
+
+            let gpu_type = match (vendor, dev_id) {
+                // Intel integrated
+                (0x8086, 0x5917) => "Intel UHD 620 (Kaby Lake)",
+                (0x8086, 0x5916) => "Intel HD 620 (Kaby Lake)",
+                (0x8086, 0x5912) => "Intel HD 630 (Kaby Lake)",
+                (0x8086, 0x3E92) => "Intel UHD 630 (Coffee Lake)",
+                (0x8086, 0x3EA0) => "Intel UHD 620 (Whiskey Lake)",
+                (0x8086, 0x9A49) => "Intel Xe (Tiger Lake)",
+                (0x8086, 0x4680) => "Intel Xe (Alder Lake)",
+                (0x8086, 0x46A6) => "Intel Xe (Alder Lake-P)",
+                (0x8086, 0xA7A0) => "Intel Xe (Raptor Lake)",
+                (0x8086, 0x7D55) => "Intel Xe (Meteor Lake)",
+                (0x8086, 0x0166) => "Intel HD 4000 (Ivy Bridge)",
+                (0x8086, 0x0412) => "Intel HD 4600 (Haswell)",
+                (0x8086, 0x1912) => "Intel HD 530 (Skylake)",
+                (0x8086, 0x591B) => "Intel HD 630 (Kaby Lake-H)",
+                // Intel Arc
+                (0x8086, 0x5690) => "Intel Arc A770",
+                (0x8086, 0x5691) => "Intel Arc A750",
+                (0x8086, 0x5692) => "Intel Arc A580",
+                (0x8086, 0x56A0) => "Intel Arc A380",
+                // NVIDIA (common)
+                (0x10DE, 0x2684) => "NVIDIA RTX 4090",
+                (0x10DE, 0x2704) => "NVIDIA RTX 4080",
+                (0x10DE, 0x2782) => "NVIDIA RTX 4070 Ti",
+                (0x10DE, 0x2786) => "NVIDIA RTX 4070",
+                (0x10DE, 0x2204) => "NVIDIA RTX 3090",
+                (0x10DE, 0x2206) => "NVIDIA RTX 3080",
+                (0x10DE, 0x2484) => "NVIDIA RTX 3070",
+                (0x10DE, 0x2504) => "NVIDIA RTX 3060 Ti",
+                (0x10DE, 0x2560) => "NVIDIA RTX 3060",
+                (0x10DE, 0x1E04) => "NVIDIA RTX 2080 Ti",
+                (0x10DE, 0x1E07) => "NVIDIA RTX 2080",
+                (0x10DE, 0x1F08) => "NVIDIA RTX 2060",
+                (0x10DE, 0x1B80) => "NVIDIA GTX 1080",
+                (0x10DE, 0x1B06) => "NVIDIA GTX 1080 Ti",
+                (0x10DE, 0x1C82) => "NVIDIA GTX 1050 Ti",
+                // QEMU
+                (0x1234, 0x1111) => "QEMU Standard VGA",
+                (0x1234, _) => "QEMU VGA",
+                // AMD — defer to our existing table
+                (0x1002, _) => {
+                    let name = DEVICE_IDS.iter()
+                        .find(|(id, _, _)| *id == dev_id)
+                        .map(|(_, n, _)| *n)
+                        .unwrap_or("Unknown AMD GPU");
+                    name
+                }
+                _ => "Unknown GPU",
+            };
+
+            let board = board_vendor(subsys_vendor);
+
+            found += 1;
+            out.push_str(&format!(
+                "GPU #{}: {} {} [{}:{:04x}] at {:02x}:{:02x}.0",
+                found, vendor_name, gpu_type,
+                match vendor { 0x1002 => "1002", 0x8086 => "8086", 0x10DE => "10DE", _ => "????" },
+                dev_id, bus, device
+            ));
+            if board != "Unknown" {
+                out.push_str(&format!(" ({})", board));
+            }
+            out.push('\n');
+        }
+    }
+
+    if found == 0 {
+        out.push_str("No GPU detected.\n");
+    } else {
+        out.push_str(&format!("Total: {} GPU(s) found.\n", found));
+    }
+    out
+}
+
 pub fn init() {
     serial_println!("[amdgpu] scanning PCI for AMD GPUs...");
 
