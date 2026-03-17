@@ -73,9 +73,10 @@ Requires: Rust nightly (via rust-toolchain.toml), rust-src, llvm-tools, cargo-bo
 ```
 Index 0: null
 Index 1: kernel code (selector 0x08)
-Index 2-3: TSS (selector 0x10, occupies two slots)
-Index 4: user data (selector 0x23 with RPL=3)
-Index 5: user code (selector 0x2B with RPL=3)
+Index 2: kernel data (selector 0x10)
+Index 3-4: TSS (selector 0x18, occupies two slots)
+Index 5: user data (selector 0x2B with RPL=3)
+Index 6: user code (selector 0x33 with RPL=3)
 ```
 
 ## Conventions

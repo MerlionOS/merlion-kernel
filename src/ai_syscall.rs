@@ -148,7 +148,7 @@ pub fn explain(topic: &str) -> String {
         ),
         "gdt" => String::from(
             "The Global Descriptor Table defines memory segments. MerlionOS has: \
-             null, kernel code (0x08), TSS (0x10), user data (0x23), user code (0x2B). \
+             null, kernel code (0x08), kernel data (0x10), TSS (0x18), user data (0x2B), user code (0x33). \
              It separates kernel (ring 0) from user (ring 3) privilege levels."
         ),
         "vfs" => String::from(
