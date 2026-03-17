@@ -505,6 +505,13 @@ pub fn dispatch(cmd: &str) {
             println!("  bgp-routes     - BGP routing table");
             println!("  rip-info       - RIP protocol info");
             println!("  rip-routes     - RIP routing table");
+            println!("QoS & Traffic Control:");
+            println!("  tc-show        - tc qdisc/class config (eth0)");
+            println!("  tc-stats       - traffic control statistics");
+            println!("  tc-info        - traffic control subsystem info");
+            println!("  dscp-info      - DSCP/ECN marking info");
+            println!("  dscp-rules     - list DSCP classification rules");
+            println!("  dscp-stats     - DSCP/ECN statistics");
             println!("System management:");
             println!("  who          - logged in users");
             println!("  w            - who + activity");
@@ -2886,6 +2893,32 @@ pub fn dispatch(cmd: &str) {
         "rip-routes" => { println!("{}", crate::rip::show_routes()); }
         "rip-stats" => { println!("{}", crate::rip::rip_stats()); }
 
+        // Network bonding
+        "bond-list" => { println!("{}", crate::bonding::list_bonds()); }
+        _ if cmd.starts_with("bond-info ") => {
+            let name = cmd.strip_prefix("bond-info ").unwrap().trim();
+            println!("{}", crate::bonding::bond_info(name));
+        }
+        "bond-stats" => { println!("{}", crate::bonding::bond_stats()); }
+
+        // IGMP multicast
+        "igmp-groups" => { println!("{}", crate::igmp::list_groups()); }
+        "igmp-info" => { println!("{}", crate::igmp::igmp_info()); }
+        "igmp-stats" => { println!("{}", crate::igmp::igmp_stats()); }
+
+        // RADIUS
+        "radius-info" => { println!("{}", crate::radius::radius_info()); }
+        "radius-stats" => { println!("{}", crate::radius::radius_stats()); }
+
+        // SNMP
+        "snmp-info" => { println!("{}", crate::snmp::snmp_info()); }
+        "snmp-stats" => { println!("{}", crate::snmp::snmp_stats()); }
+        _ if cmd.starts_with("snmp-walk ") => {
+            let oid = cmd.strip_prefix("snmp-walk ").unwrap().trim();
+            println!("{}", crate::snmp::snmp_walk_cmd(oid));
+        }
+        "snmp-walk" => { println!("{}", crate::snmp::snmp_walk_cmd("1.3.6.1.2.1")); }
+
         // gRPC
         "grpc-info" => { println!("{}", crate::grpc::grpc_info()); }
         "grpc-services" => { println!("{}", crate::grpc::list_services()); }
@@ -2928,6 +2961,29 @@ pub fn dispatch(cmd: &str) {
                 Err(e) => println!("tftp-stop: {}", e),
             }
         }
+
+        // QoS & Traffic Control
+        "tc-show" => { println!("{}", crate::traffic_control::tc_show("eth0")); }
+        "tc-stats" => { println!("{}", crate::traffic_control::tc_stats()); }
+        "tc-info" => { println!("{}", crate::traffic_control::tc_info()); }
+        "dscp-info" => { println!("{}", crate::dscp::dscp_info()); }
+        "dscp-rules" => { println!("{}", crate::dscp::list_rules()); }
+        "dscp-stats" => { println!("{}", crate::dscp::dscp_stats()); }
+
+        // Raw sockets
+        "raw-info" => { println!("{}", crate::raw_socket::raw_socket_info()); }
+        "raw-stats" => { println!("{}", crate::raw_socket::raw_socket_stats()); }
+
+        // Classic BPF
+        "bpf-info" => { println!("{}", crate::bpf::bpf_info()); }
+        "bpf-stats" => { println!("{}", crate::bpf::bpf_stats()); }
+
+        // Extended BPF
+        "ebpf-info" => { println!("{}", crate::ebpf::ebpf_info()); }
+        "ebpf-maps" => { println!("{}", crate::ebpf::list_maps()); }
+        "ebpf-progs" => { println!("{}", crate::ebpf::list_programs()); }
+        "ebpf-stats" => { println!("{}", crate::ebpf::ebpf_stats()); }
+        "xdp-info" => { println!("{}", crate::ebpf::xdp_info()); }
 
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),

@@ -159,6 +159,15 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     ospf::init();
     bgp::init();
     rip::init();
+    traffic_control::init();
+    dscp::init();
+    raw_socket::init();
+    bpf::init();
+    ebpf::init();
+    bonding::init();
+    igmp::init();
+    radius::init();
+    snmp::init();
     grpc::init();
     smtp::init();
     imap::init();
