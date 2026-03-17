@@ -230,6 +230,48 @@
 
 ---
 
+## 第八阶段：高性能网络 (N8)
+
+### N8.1 — 25/100GbE 网卡驱动
+- Mellanox ConnectX-5/6 (mlx5) 驱动框架
+- Intel E810 (ice) 驱动框架
+- 多队列（Multi-Queue）收发
+- RSS (Receive Side Scaling) — 多核包分发
+- 中断合并 (Interrupt Coalescing)
+- 巨帧支持 (Jumbo Frame, 9000 MTU)
+- **~500行**
+
+### N8.2 — 零拷贝网络 (Zero-Copy)
+- `sendfile()` — 文件直接发送到socket，不经过用户态缓冲区
+- `splice()` / `tee()` — 管道和socket间零拷贝数据移动
+- 页面映射（Page Pinning）— 用户态缓冲区直接映射给DMA
+- scatter-gather I/O — 多缓冲区合并发送
+- **~300行**
+
+### N8.3 — DPDK风格用户态网络
+- 轮询模式驱动（PMD）— 绕过中断，纯轮询收包
+- 无锁环形缓冲区（Ring Buffer）— 多生产者多消费者
+- 内存池（Mempool）— 预分配包缓冲区，避免malloc
+- 批量收发（Burst RX/TX）— 一次处理32/64个包
+- 亲和性绑定（Core Pinning）— 网卡队列绑定到特定CPU核
+- **~500行**
+
+### N8.4 — AF_XDP
+- XDP Socket — 用户态直接收发包
+- UMEM共享内存区域
+- Fill/Completion/RX/TX环形队列
+- 与eBPF XDP程序配合
+- **~350行**
+
+### N8.5 — TCP Offload
+- Checksum Offload — 校验和由网卡计算
+- TSO (TCP Segmentation Offload) — 大包由网卡分段
+- GRO (Generic Receive Offload) — 小包由网卡合并
+- LRO (Large Receive Offload) — 接收端合并
+- **~250行**
+
+---
+
 ## 代码量预估
 
 ```
@@ -241,9 +283,10 @@ N4 应用协议:  +1,050 行 → 11,550
 N5 QoS流控:   +  700 行 → 12,250
 N6 可编程网络: +1,050 行 → 13,300
 N7 高级特性:  +1,000 行 → 14,300
+N8 高性能网络: +1,900 行 → 16,200
 ```
 
-网络子系统总计: **~14,300 行**（占内核总代码 ~15%）
+网络子系统总计: **~16,200 行**（占内核总代码 ~15%）
 
 ---
 
@@ -272,9 +315,13 @@ N7 高级特性:  +1,000 行 → 14,300
 │ 可编程                                                   │
 │ Raw Socket · BPF · eBPF/XDP                              │
 ├─────────────────────────────────────────────────────────┤
+│ 高性能                                                   │
+│ 25/100GbE (mlx5/ice) · 零拷贝 · DPDK/PMD · AF_XDP      │
+│ TSO/GRO/LRO · RSS · 中断合并 · 巨帧                     │
+├─────────────────────────────────────────────────────────┤
 │ 链路层                                                   │
 │ e1000e · virtio-net · veth · bridge · VLAN 802.1Q       │
-│ WiFi 802.11 · Bonding/LACP · PPPoE                      │
+│ WiFi 802.11 · Bonding/LACP · PPPoE · 25/100GbE         │
 ├─────────────────────────────────────────────────────────┤
 │ 工具                                                     │
 │ ss · nc · ip · traceroute · portscan · ping · tcpdump   │
