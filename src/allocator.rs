@@ -10,8 +10,8 @@ use linked_list_allocator::LockedHeap;
 
 /// Heap starts at a fixed virtual address above the kernel.
 pub const HEAP_START: usize = 0x4444_4444_0000;
-/// 8 MiB heap — balance between module needs and available physical memory.
-pub const HEAP_SIZE: usize = 8 * 1024 * 1024;
+/// 2 MiB heap — most modules use lazy init, so boot needs minimal heap.
+pub const HEAP_SIZE: usize = 2 * 1024 * 1024;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
