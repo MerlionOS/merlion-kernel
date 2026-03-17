@@ -102,6 +102,7 @@ pub mod framebuf;
 pub mod fuzz;
 pub mod gdt;
 pub mod gpu;
+pub mod gpu_detect;
 pub mod grpc;
 pub mod glob;
 pub mod gpio;

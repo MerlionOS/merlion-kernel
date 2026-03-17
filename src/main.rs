@@ -67,6 +67,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     smp::init();
     apic_timer::init();
     e1000e::init();
+    gpu_detect::init();
     amdgpu::init();
     amdgpu_compute::init();
     netstack::init();

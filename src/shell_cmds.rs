@@ -2050,7 +2050,7 @@ pub fn dispatch_hardware(cmd: &str) -> bool {
 
     match cmd {
         "gpu-info" => {
-            println!("{}", amdgpu::scan_all_gpus());
+            println!("{}", crate::gpu_detect::scan_all_gpus());
             if amdgpu::is_detected() {
                 println!("{}", amdgpu::amdgpu_info());
                 println!("{}", crate::amdgpu_compute::compute_info());
