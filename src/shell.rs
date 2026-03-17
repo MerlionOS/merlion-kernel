@@ -3290,6 +3290,54 @@ pub fn dispatch(cmd: &str) {
         }
         "term-info" => { println!("{}", crate::fb_terminal::fb_terminal_info()); }
 
+        // -- v80: Input devices --
+        "mouse-info" => { println!("{}", crate::usb_mouse::mouse_info()); }
+        "mouse-stats" => { println!("{}", crate::usb_mouse::mouse_stats()); }
+        "keymap" => { println!("{}", crate::keymap::keymap_info()); }
+        cmd if cmd.starts_with("keymap-set ") => {
+            let name = cmd.strip_prefix("keymap-set ").unwrap().trim();
+            if crate::keymap::set_layout(name) {
+                println!("Keyboard layout set to: {}", name);
+            } else {
+                println!("Unknown layout: {}. Use 'keymap-list' to see options.", name);
+            }
+        }
+        "keymap-list" => {
+            let layouts = crate::keymap::list_layouts();
+            println!("Available layouts:");
+            for name in &layouts {
+                let marker = if *name == crate::keymap::current_layout() { " (active)" } else { "" };
+                println!("  {}{}", name, marker);
+            }
+        }
+        "touchpad-info" => { println!("{}", crate::touchpad::touchpad_info()); }
+
+        // -- v81: Storage Enhancement (NTFS, RAID) --
+        "ntfs-info" => { println!("{}", crate::ntfs::ntfs_info()); }
+        "ntfs-stats" => { println!("{}", crate::ntfs::ntfs_stats()); }
+        "raid-list" => { println!("{}", crate::raid::list_arrays()); }
+        "raid-stats" => { println!("{}", crate::raid::raid_stats()); }
+        cmd if cmd.starts_with("raid-info ") => {
+            let id_str = cmd.strip_prefix("raid-info ").unwrap().trim();
+            match id_str.parse::<u32>() {
+                Ok(id) => println!("{}", crate::raid::array_info(id)),
+                Err(_) => println!("Usage: raid-info <array-id>"),
+            }
+        }
+        // -- v82: Power Management --
+        "sleep" => {
+            match crate::acpi_ext::sleep() {
+                Ok(()) => println!("Resumed from S3 sleep."),
+                Err(e) => println!("sleep: {}", e),
+            }
+        }
+        "battery-detail" => { println!("{}", crate::acpi_ext::battery_detail()); }
+        "lid-status" => { println!("{}", crate::acpi_ext::lid_status()); }
+        "cpu-freq" => { println!("{}", crate::acpi_ext::list_cpu_freqs()); }
+        "thermal-detail" => { println!("{}", crate::acpi_ext::thermal_detail()); }
+        "acpi-ext-info" => { println!("{}", crate::acpi_ext::acpi_ext_info()); }
+        "acpi-ext-stats" => { println!("{}", crate::acpi_ext::acpi_ext_stats()); }
+
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
         "sh" => crate::bash::cmd_sh(),

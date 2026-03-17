@@ -77,6 +77,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     intel_i225::init();
     netstack::init();
     usb_hid::init();
+    usb_mouse::init();
+    keymap::init();
+    touchpad::init();
     usb_mass::init();
     sata::init();
     semfs::init();
@@ -129,6 +132,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     agent::init();
     acl::init();
     power_mgmt::init();
+    ntfs::init();
+    raid::init();
+    acpi_ext::init();
     hda::init();
     wifi::init();
     gpio::init();
