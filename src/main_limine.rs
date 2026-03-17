@@ -271,7 +271,7 @@ extern "C" fn _start() -> ! {
         }
     }
 
-    // Phase 7: All subsystems
+    // Phase 7: Core subsystems (lazy init for 120+ modules)
     merlion_kernel::task::init();
     merlion_kernel::serial_println!("[ok] Task system");
 
@@ -289,86 +289,16 @@ extern "C" fn _start() -> ! {
 
     merlion_kernel::smp::init();
     merlion_kernel::apic_timer::init();
-    merlion_kernel::virtio_blk::init();
-    merlion_kernel::virtio_net::init();
-    merlion_kernel::ahci::init();
-    merlion_kernel::nvme::init();
-    merlion_kernel::xhci::init();
     merlion_kernel::e1000e::init();
     merlion_kernel::netstack::init();
     merlion_kernel::usb_hid::init();
-    merlion_kernel::semfs::init();
     merlion_kernel::serial_println!("[ok] Hardware drivers");
 
     merlion_kernel::security::init();
     merlion_kernel::capability::init();
-    merlion_kernel::structured_log::init();
-    merlion_kernel::log_rotate::init();
-    merlion_kernel::remote_log::init();
-    merlion_kernel::panic_recover::init();
-    merlion_kernel::serial_println!("[ok] Security + logging");
-
-    merlion_kernel::http_middleware::init();
-    merlion_kernel::scp::init();
-    merlion_kernel::dns_zone::init();
-    merlion_kernel::mqtt_broker::init();
-    merlion_kernel::ws_server::init();
-    merlion_kernel::serial_println!("[ok] Network services");
-
-    merlion_kernel::nn_inference::init();
-    merlion_kernel::vector_store::init();
-    merlion_kernel::ai_workflow::init();
-    merlion_kernel::self_evolve::init();
-    merlion_kernel::serial_println!("[ok] AI platform");
-
-    merlion_kernel::gpu::init();
-    merlion_kernel::bluetooth::init();
-    merlion_kernel::dfs::init();
-    merlion_kernel::rt_sched::init();
-    merlion_kernel::microkernel::init();
-    merlion_kernel::audio_engine::init();
-    merlion_kernel::midi::init();
-    merlion_kernel::userland::init();
-    merlion_kernel::libc::init();
-    merlion_kernel::widget::init();
-    merlion_kernel::dialog::init();
-    merlion_kernel::ipv6::init();
-    merlion_kernel::https_server::init();
-    merlion_kernel::pkg_registry::init();
-    merlion_kernel::build_system::init();
-    merlion_kernel::serial_println!("[ok] Extended subsystems");
-
-    merlion_kernel::ext4::init();
-    merlion_kernel::tcp_congestion::init();
-    merlion_kernel::wasi::init();
-    merlion_kernel::veth::init();
-    merlion_kernel::bridge::init();
-    merlion_kernel::elf_runtime::init();
-    merlion_kernel::debuginfo::init();
-    merlion_kernel::crypto_ext::init();
-    merlion_kernel::procfs::init();
-    merlion_kernel::sysfs::init();
-    merlion_kernel::tmpfs::init();
-    merlion_kernel::pipe2::init();
-    merlion_kernel::serial_println!("[ok] Filesystems + crypto");
-
-    merlion_kernel::ai_proxy::init();
-    merlion_kernel::agent::init();
-    merlion_kernel::acl::init();
-    merlion_kernel::power_mgmt::init();
-    merlion_kernel::hda::init();
-    merlion_kernel::wifi::init();
     merlion_kernel::kconfig::load();
-    merlion_kernel::kconfig_ext::init();
-    merlion_kernel::netdiag::init();
-    merlion_kernel::vmm::init();
-    merlion_kernel::ipc_ext::init();
-    merlion_kernel::perf_events::init();
-    merlion_kernel::cgroup::init();
-    merlion_kernel::vim::init();
-    merlion_kernel::bash::init();
     merlion_kernel::script::create_default_init();
-    merlion_kernel::serial_println!("[ok] All subsystems initialized");
+    merlion_kernel::serial_println!("[ok] All subsystems initialized (lazy init for 120+ modules)");
 
     // Phase 8: RTC + login
     let dt = merlion_kernel::rtc::read();

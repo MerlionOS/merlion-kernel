@@ -201,3 +201,7 @@ run-loongarch: loongarch
 clean:
 	cargo clean
 	rm -f $(DISK_IMG)
+
+# Automated smoke test
+test-smoke:
+	bash tools/smoke-test.sh

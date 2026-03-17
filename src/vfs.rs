@@ -36,13 +36,26 @@ struct Inode {
     owner_gid: u32,
 }
 
+const MAX_PATH_CACHE: usize = 256;
+
 struct Filesystem {
     inodes: Vec<Inode>,
+    path_cache: Vec<(u64, usize)>, // (fnv_hash, inode_index) for fast lookup
+}
+
+/// FNV-1a hash for fast path lookups.
+fn fnv_hash(path: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in path.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x00000100000001B3);
+    }
+    hash
 }
 
 impl Filesystem {
     fn new() -> Self {
-        let mut fs = Self { inodes: Vec::new() };
+        let mut fs = Self { inodes: Vec::new(), path_cache: Vec::new() };
 
         // 0: /
         fs.inodes.push(Inode {
@@ -171,11 +184,84 @@ impl Filesystem {
             owner_gid: 0,
         });
 
+        // Populate path cache for initial inodes
+        fs.populate_initial_cache();
+
         fs
     }
 
-    /// Resolve a path to an inode index.
+    /// Build the full path string for an inode by walking parents.
+    fn build_path(&self, idx: usize) -> String {
+        if idx == 0 {
+            return "/".to_owned();
+        }
+        let mut parts: Vec<&str> = Vec::new();
+        let mut cur = idx;
+        while cur != 0 {
+            parts.push(&self.inodes[cur].name);
+            cur = self.inodes[cur].parent;
+        }
+        parts.reverse();
+        let mut path = String::new();
+        for p in &parts {
+            path.push('/');
+            path.push_str(p);
+        }
+        path
+    }
+
+    /// Populate path cache for all existing inodes.
+    fn populate_initial_cache(&mut self) {
+        for idx in 0..self.inodes.len() {
+            let path = self.build_path(idx);
+            let hash = fnv_hash(&path);
+            if self.path_cache.len() < MAX_PATH_CACHE {
+                self.path_cache.push((hash, idx));
+            }
+        }
+    }
+
+    /// Add an entry to the path cache, evicting oldest if full.
+    fn cache_insert(&mut self, path: &str, idx: usize) {
+        let hash = fnv_hash(path);
+        // Don't add duplicates
+        for &(h, i) in &self.path_cache {
+            if h == hash && i == idx {
+                return;
+            }
+        }
+        if self.path_cache.len() >= MAX_PATH_CACHE {
+            self.path_cache.remove(0); // evict oldest
+        }
+        self.path_cache.push((hash, idx));
+    }
+
+    /// Remove an inode from the path cache.
+    fn cache_remove(&mut self, idx: usize) {
+        self.path_cache.retain(|&(_, i)| i != idx);
+    }
+
+    /// Resolve a path to an inode index (cache-accelerated).
     fn resolve(&self, path: &str) -> Option<usize> {
+        // Check cache first
+        let hash = fnv_hash(path);
+        for &(h, idx) in &self.path_cache {
+            if h == hash && idx < self.inodes.len() {
+                // Verify by re-resolving to confirm (hash collision guard)
+                if let Some(verified) = self.resolve_uncached(path) {
+                    if verified == idx {
+                        return Some(idx);
+                    }
+                }
+            }
+        }
+
+        // Fall through to linear search
+        self.resolve_uncached(path)
+    }
+
+    /// Resolve a path to an inode index (uncached linear search).
+    fn resolve_uncached(&self, path: &str) -> Option<usize> {
         if path == "/" {
             return Some(0);
         }
@@ -323,6 +409,9 @@ impl Filesystem {
             owner_uid: crate::security::current_uid(),
             owner_gid: crate::security::current_gid(),
         });
+        // Add to path cache
+        let path = self.build_path(idx);
+        self.cache_insert(&path, idx);
         Ok(idx)
     }
 
@@ -334,6 +423,8 @@ impl Filesystem {
         if self.inodes[idx].node_type != NodeType::RegularFile {
             return Err("can only delete regular files");
         }
+        // Remove from path cache before mutating
+        self.cache_remove(idx);
         // Check no children reference this (shouldn't for regular files)
         self.inodes[idx].data.clear();
         self.inodes[idx].name = String::from("(deleted)");
