@@ -3400,6 +3400,130 @@ pub fn dispatch(cmd: &str) {
         "settings-save" => { crate::settings_app::save_settings(); }
         "settings-load" => { crate::settings_app::load_settings(); }
 
+        // -- v88: Web Browser --
+        cmd if cmd.starts_with("browse ") => {
+            let url = cmd.strip_prefix("browse ").unwrap().trim();
+            match crate::browser::navigate(url) {
+                Ok(page) => { crate::println!("{}", page); }
+                Err(e) => { crate::println!("browse: {}", e); }
+            }
+        }
+        "browser-info" => { crate::println!("{}", crate::browser::browser_info()); }
+        "browser-stats" => { crate::println!("{}", crate::browser::browser_stats()); }
+        "browser-back" => {
+            match crate::browser::back() {
+                Ok(page) => { crate::println!("{}", page); }
+                Err(e) => { crate::println!("back: {}", e); }
+            }
+        }
+        "browser-forward" => {
+            match crate::browser::forward() {
+                Ok(page) => { crate::println!("{}", page); }
+                Err(e) => { crate::println!("forward: {}", e); }
+            }
+        }
+
+        // -- v89: Email Client --
+        "mail" => { crate::println!("{}", crate::email::email_info()); }
+        "mail-check" => {
+            let headers = crate::email::check_mail();
+            if headers.is_empty() {
+                crate::println!("No mail.");
+            } else {
+                for h in &headers {
+                    let flag = if h.read { " " } else { "*" };
+                    crate::println!("{} {:>4} {:20} {}", flag, h.id, h.from, h.subject);
+                }
+            }
+        }
+        cmd if cmd.starts_with("mail-send ") => {
+            // mail-send <to> <subject>
+            let rest = cmd.strip_prefix("mail-send ").unwrap().trim();
+            if let Some((to, subject)) = rest.split_once(' ') {
+                let from = "root@merlion";
+                match crate::email::compose_and_send(from, to.trim(), subject.trim(), "") {
+                    Ok(()) => { crate::println!("Mail sent to {}", to.trim()); }
+                    Err(e) => { crate::println!("mail-send: {}", e); }
+                }
+            } else {
+                crate::println!("usage: mail-send <to> <subject>");
+            }
+        }
+        cmd if cmd.starts_with("mail-read ") => {
+            let id_str = cmd.strip_prefix("mail-read ").unwrap().trim();
+            let mut id_val = 0u32;
+            let mut valid = true;
+            for ch in id_str.bytes() {
+                if ch.is_ascii_digit() {
+                    id_val = id_val.saturating_mul(10).saturating_add((ch - b'0') as u32);
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            if valid && !id_str.is_empty() {
+                match crate::email::fetch_email(id_val) {
+                    Some(email) => { crate::println!("{}", email.display()); }
+                    None => { crate::println!("mail-read: email {} not found", id_val); }
+                }
+            } else {
+                crate::println!("usage: mail-read <id>");
+            }
+        }
+        "mail-stats" => { crate::println!("{}", crate::email::email_stats()); }
+
+        // -- v90: Music Player --
+        cmd if cmd.starts_with("play ") => {
+            let path = cmd.strip_prefix("play ").unwrap().trim();
+            crate::music_player::play(path);
+            println!("{}", crate::music_player::now_playing());
+        }
+        "pause" => { crate::music_player::pause(); println!("Paused."); }
+        "stop" => { crate::music_player::stop(); println!("Stopped."); }
+        "next-track" => { crate::music_player::next(); println!("{}", crate::music_player::now_playing()); }
+        "prev-track" => { crate::music_player::prev(); println!("{}", crate::music_player::now_playing()); }
+        "now-playing" => { println!("{}", crate::music_player::now_playing()); }
+        "playlist" => { println!("{}", crate::music_player::playlist_show()); }
+        cmd if cmd.starts_with("playlist-add ") => {
+            let path = cmd.strip_prefix("playlist-add ").unwrap().trim();
+            crate::music_player::playlist_add(path);
+            println!("Added to playlist.");
+        }
+        "player-info" => { println!("{}", crate::music_player::player_info()); }
+        "player-stats" => { println!("{}", crate::music_player::player_stats()); }
+        "vu" => { println!("{}", crate::music_player::vu_meter()); }
+
+        // -- v91: Development Environment --
+        cmd if cmd.starts_with("highlight ") => {
+            let path = cmd.strip_prefix("highlight ").unwrap().trim();
+            println!("{}", crate::dev_env::highlight_file(path));
+        }
+        "dev-info" => { println!("{}", crate::dev_env::dev_env_info()); }
+        "dev-env-stats" => { println!("{}", crate::dev_env::dev_env_stats()); }
+        cmd if cmd.starts_with("dev-open ") => {
+            let path = cmd.strip_prefix("dev-open ").unwrap().trim();
+            match crate::dev_env::open_file(path) {
+                Ok(idx) => println!("Opened buffer {}: {}", idx, path),
+                Err(e) => println!("dev-open: {}", e),
+            }
+        }
+        "dev-buffers" => { println!("{}", crate::dev_env::list_buffers()); }
+        cmd if cmd.starts_with("dev-project ") => {
+            let path = cmd.strip_prefix("dev-project ").unwrap().trim();
+            println!("{}", crate::dev_env::open_project(path));
+        }
+        "dev-build" => { println!("{}", crate::dev_env::build()); }
+        "dev-errors" => { println!("{}", crate::dev_env::build_errors()); }
+        "dev-breakpoints" => { println!("{}", crate::dev_env::list_breakpoints()); }
+
+        // -- v92: Network Package Manager --
+        cmd if cmd.starts_with("pkg ") => {
+            let args = cmd.strip_prefix("pkg ").unwrap().trim();
+            println!("{}", crate::pkg_net::handle_command(args));
+        }
+        "pkg-net-info" => { println!("{}", crate::pkg_net::pkg_net_info()); }
+        "pkg-net-stats" => { println!("{}", crate::pkg_net::pkg_net_stats()); }
+
         "bash" => crate::bash::cmd_bash(),
         "zsh" => crate::bash::cmd_zsh(),
         "sh" => crate::bash::cmd_sh(),

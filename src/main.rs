@@ -194,6 +194,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     file_manager::init();
     net_manager::init();
     settings_app::init();
+    browser::init();
+    email::init();
+    music_player::init();
+    dev_env::init();
+    pkg_net::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
