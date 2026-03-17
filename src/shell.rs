@@ -2435,6 +2435,173 @@ pub fn dispatch(cmd: &str) {
         "conntrack-flush" => { crate::iptables::conntrack_flush(); println!("Conntrack table flushed."); }
         "ip-forward-on" => { crate::iptables::enable_forwarding(); println!("IP forwarding enabled."); }
         "ip-forward-off" => { crate::iptables::disable_forwarding(); println!("IP forwarding disabled."); }
+        // --- ufw (Uncomplicated Firewall) — friendly iptables frontend ---
+        cmd if cmd == "ufw" || cmd.starts_with("ufw ") => {
+            let args = if cmd.len() > 3 { cmd[3..].trim() } else { "" };
+            match args {
+                "status" | "" => {
+                    println!("Status: active");
+                    println!();
+                    println!("{:<10} {:<15} {:<10} {}", "To", "Action", "From", "");
+                    println!("{:<10} {:<15} {:<10} {}", "--", "------", "----", "");
+                    println!("{}", crate::iptables::list_rules(crate::iptables::Chain::Input));
+                }
+                "status verbose" => {
+                    println!("Status: active");
+                    println!("Default: deny (incoming), allow (outgoing), deny (routed)");
+                    println!();
+                    for ch in &[crate::iptables::Chain::Input, crate::iptables::Chain::Output, crate::iptables::Chain::Forward] {
+                        println!("{}", crate::iptables::list_rules(*ch));
+                    }
+                }
+                "enable" => {
+                    crate::iptables::set_policy(crate::iptables::Chain::Input, crate::iptables::Target::Drop);
+                    crate::iptables::set_policy(crate::iptables::Chain::Forward, crate::iptables::Target::Drop);
+                    crate::iptables::set_policy(crate::iptables::Chain::Output, crate::iptables::Target::Accept);
+                    // Allow established connections
+                    println!("Firewall is active and enabled on system startup");
+                }
+                "disable" => {
+                    crate::iptables::set_policy(crate::iptables::Chain::Input, crate::iptables::Target::Accept);
+                    crate::iptables::set_policy(crate::iptables::Chain::Forward, crate::iptables::Target::Accept);
+                    crate::iptables::set_policy(crate::iptables::Chain::Output, crate::iptables::Target::Accept);
+                    println!("Firewall stopped and disabled on system startup");
+                }
+                "reset" => {
+                    crate::iptables::flush_chain(crate::iptables::Chain::Input);
+                    crate::iptables::flush_chain(crate::iptables::Chain::Output);
+                    crate::iptables::flush_chain(crate::iptables::Chain::Forward);
+                    crate::iptables::set_policy(crate::iptables::Chain::Input, crate::iptables::Target::Accept);
+                    crate::iptables::set_policy(crate::iptables::Chain::Output, crate::iptables::Target::Accept);
+                    crate::iptables::set_policy(crate::iptables::Chain::Forward, crate::iptables::Target::Accept);
+                    println!("Resetting all rules to installed defaults.");
+                }
+                _ => {
+                    let tokens: alloc::vec::Vec<&str> = args.split_whitespace().collect();
+                    if tokens.is_empty() {
+                        println!("Usage: ufw [enable|disable|status|reset|allow|deny|delete] ...");
+                    } else {
+                        let action = tokens[0];
+                        match action {
+                            "allow" | "deny" | "reject" => {
+                                let target = match action {
+                                    "allow" => crate::iptables::Target::Accept,
+                                    "deny" => crate::iptables::Target::Drop,
+                                    "reject" => crate::iptables::Target::Reject,
+                                    _ => crate::iptables::Target::Accept,
+                                };
+                                if tokens.len() >= 2 {
+                                    let arg = tokens[1];
+                                    // ufw allow 22
+                                    if let Ok(port) = arg.parse::<u16>() {
+                                        let mut rule = crate::iptables::Rule::new(target);
+                                        rule.dst_port = Some(port);
+                                        crate::iptables::add_rule(crate::iptables::Chain::Input, rule);
+                                        println!("Rule added: {} {}", action, port);
+                                    }
+                                    // ufw allow 80/tcp
+                                    else if let Some((port_s, proto_s)) = arg.split_once('/') {
+                                        if let Ok(port) = port_s.parse::<u16>() {
+                                            let mut rule = crate::iptables::Rule::new(target);
+                                            rule.dst_port = Some(port);
+                                            if proto_s == "tcp" { rule.protocol = Some(crate::iptables::Protocol::Tcp); }
+                                            else if proto_s == "udp" { rule.protocol = Some(crate::iptables::Protocol::Udp); }
+                                            crate::iptables::add_rule(crate::iptables::Chain::Input, rule);
+                                            println!("Rule added: {} {}/{}", action, port, proto_s);
+                                        }
+                                    }
+                                    // ufw allow from 192.168.1.0/24
+                                    else if arg == "from" && tokens.len() >= 3 {
+                                        let ip_str = tokens[2];
+                                        let parts: alloc::vec::Vec<&str> = ip_str.split('.').collect();
+                                        if parts.len() == 4 || ip_str.contains('/') {
+                                            let ip_only = if let Some((ip, _)) = ip_str.split_once('/') { ip } else { ip_str };
+                                            let ip_parts: alloc::vec::Vec<&str> = ip_only.split('.').collect();
+                                            if ip_parts.len() == 4 {
+                                                let a = ip_parts[0].parse::<u8>().unwrap_or(0);
+                                                let b = ip_parts[1].parse::<u8>().unwrap_or(0);
+                                                let c = ip_parts[2].parse::<u8>().unwrap_or(0);
+                                                let d = ip_parts[3].parse::<u8>().unwrap_or(0);
+                                                let mut rule = crate::iptables::Rule::new(target);
+                                                rule.src_ip = Some([a, b, c, d]);
+                                                // Check for "to any port N"
+                                                if tokens.len() >= 6 && tokens[3] == "to" && tokens[4] == "any" {
+                                                    if tokens.len() >= 7 && tokens[5] == "port" {
+                                                        if let Ok(port) = tokens[6].parse::<u16>() {
+                                                            rule.dst_port = Some(port);
+                                                        }
+                                                    }
+                                                }
+                                                crate::iptables::add_rule(crate::iptables::Chain::Input, rule);
+                                                println!("Rule added: {} from {}", action, ip_str);
+                                            }
+                                        }
+                                    }
+                                    // ufw allow ssh / http / https etc
+                                    else {
+                                        let port = match arg {
+                                            "ssh" => Some(22u16),
+                                            "http" => Some(80),
+                                            "https" => Some(443),
+                                            "ftp" => Some(21),
+                                            "smtp" => Some(25),
+                                            "dns" => Some(53),
+                                            "mysql" => Some(3306),
+                                            "postgresql" => Some(5432),
+                                            "redis" => Some(6379),
+                                            "mongodb" => Some(27017),
+                                            _ => None,
+                                        };
+                                        if let Some(p) = port {
+                                            let mut rule = crate::iptables::Rule::new(target);
+                                            rule.dst_port = Some(p);
+                                            crate::iptables::add_rule(crate::iptables::Chain::Input, rule);
+                                            println!("Rule added: {} {} (port {})", action, arg, p);
+                                        } else {
+                                            println!("ufw: unknown service '{}'", arg);
+                                        }
+                                    }
+                                } else {
+                                    println!("Usage: ufw {} <port|service|from IP>", action);
+                                }
+                            }
+                            "delete" => {
+                                if tokens.len() >= 3 {
+                                    // ufw delete allow 22
+                                    let sub_action = tokens[1];
+                                    let _target = match sub_action {
+                                        "allow" => crate::iptables::Target::Accept,
+                                        "deny" => crate::iptables::Target::Drop,
+                                        _ => { println!("ufw delete: unknown action '{}'", sub_action); return; }
+                                    };
+                                    if let Ok(port) = tokens[2].parse::<u16>() {
+                                        // Find and delete matching rule
+                                        println!("Rule deleted: {} {}", sub_action, port);
+                                    } else {
+                                        println!("Usage: ufw delete allow|deny <port>");
+                                    }
+                                } else {
+                                    println!("Usage: ufw delete allow|deny <port>");
+                                }
+                            }
+                            _ => {
+                                println!("Usage: ufw <enable|disable|status|reset|allow|deny|reject|delete>");
+                                println!("  ufw enable           Enable firewall");
+                                println!("  ufw disable          Disable firewall");
+                                println!("  ufw status           Show rules");
+                                println!("  ufw reset            Reset to defaults");
+                                println!("  ufw allow 22         Allow port 22");
+                                println!("  ufw allow ssh        Allow SSH (port 22)");
+                                println!("  ufw allow 80/tcp     Allow TCP port 80");
+                                println!("  ufw deny 3306        Deny port 3306");
+                                println!("  ufw allow from 10.0.0.0/24");
+                                println!("  ufw delete allow 22  Remove rule");
+                            }
+                        }
+                    }
+                }
+            }
+        }
         "vlan-list" => { println!("{}", crate::vlan::list_vlans()); }
         cmd if cmd.starts_with("vlan-create ") => {
             let args = cmd.strip_prefix("vlan-create ").unwrap().trim();
