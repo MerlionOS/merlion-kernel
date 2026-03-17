@@ -484,6 +484,36 @@ pub fn dispatch_process(cmd: &str) -> bool {
             }
         }
         "demo" => demo::run(),
+
+        // --- Userspace process commands ---
+        cmd if cmd.starts_with("run-user ") => {
+            let name = cmd[9..].trim();
+            match crate::userspace::run_builtin(name) {
+                Ok(()) => println!("User program '{}' finished.", name),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        "run-user" => {
+            println!("Usage: run-user <program>");
+            println!("Programs: {:?}", crate::userspace::list_builtin_programs());
+        }
+        "user-ps" => {
+            print!("{}", crate::userspace::list_processes());
+        }
+        cmd if cmd.starts_with("user-kill ") => {
+            if let Ok(pid) = cmd[10..].trim().parse::<u32>() {
+                match crate::userspace::kill_process(pid) {
+                    Ok(()) => println!("Killed user process pid {}", pid),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: user-kill <pid>");
+            }
+        }
+        "userspace" => {
+            print!("{}", crate::userspace::userspace_info());
+        }
+
         _ => return false,
     }
     true

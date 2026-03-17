@@ -316,3 +316,4 @@ pub mod blake3;
 pub mod ed25519;
 pub mod qfc_miner;
 pub mod self_host;
+pub mod userspace;
