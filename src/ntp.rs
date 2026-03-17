@@ -7,7 +7,6 @@
 /// Uses `spin::Mutex` for thread-safety in `no_std` kernel context.
 
 use alloc::string::String;
-use alloc::vec::Vec;
 use alloc::format;
 use spin::Mutex;
 use core::sync::atomic::{AtomicU64, AtomicBool, Ordering};

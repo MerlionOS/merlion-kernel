@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 
@@ -60,6 +59,7 @@ pub extern "C" fn _start() -> ! {
 // Pi kernel main (architecture-independent logic with cfg guards)
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn kernel_main_pi() -> ! {
     // ---------------------------------------------------------------
     // Phase 1: Early UART output

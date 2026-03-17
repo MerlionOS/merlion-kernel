@@ -483,7 +483,7 @@ pub fn handle_response(response: &[u8]) {
     // Simplified: add a synthetic cache entry
     // In a real implementation we would parse all answer records
     let current_tick = crate::timer::ticks();
-    let mut mdns = MDNS.lock();
+    let mdns = MDNS.lock();
     if mdns.cache.len() < MAX_CACHE {
         // Check for conflict with our hostname
         // (simplified — real mDNS would parse the name from the response)

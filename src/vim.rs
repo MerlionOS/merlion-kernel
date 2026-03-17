@@ -433,7 +433,7 @@ impl Editor {
             EditAction::ReplaceLine { row, old, .. } => {
                 self.buffer.replace_line(*row, old.clone());
             }
-            EditAction::SplitLine { row, col } => {
+            EditAction::SplitLine { row, col: _ } => {
                 // Reverse of split = join
                 if *row + 1 < self.buffer.line_count() {
                     let next = self.buffer.lines[*row + 1].clone();
@@ -1755,7 +1755,7 @@ impl Editor {
         };
         let total = self.buffer.line_count();
         let pct = if total == 0 { 0usize }
-                  else { ((self.cursor.row * 100) / total) };
+                  else { (self.cursor.row * 100) / total };
         let status = format!(
             " {}{} -- {} -- {}:{} | {} lines | {}%",
             filename, modified_flag, mode_str,

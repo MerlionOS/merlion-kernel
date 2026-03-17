@@ -4,7 +4,6 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 use alloc::format;
 use alloc::borrow::ToOwned;
 use spin::Mutex;

@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 
@@ -37,6 +36,7 @@ pub extern "C" fn _start() -> ! {
 // LoongArch kernel main
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 fn kernel_main_loongarch() -> ! {
     // ---------------------------------------------------------------
     // Phase 1: Early output

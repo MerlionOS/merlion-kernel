@@ -4,7 +4,6 @@
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use alloc::vec;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use core::sync::atomic::{AtomicU64, Ordering};

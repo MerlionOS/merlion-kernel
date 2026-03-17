@@ -511,7 +511,7 @@ pub fn process_frame(frame: &[u8], ingress_port: &str) -> Option<(Vec<u8>, u16)>
     let mut mgr = VLAN_MANAGER.lock();
 
     // Determine VLAN
-    let (clean_frame, vid) = if let Some(fvid) = get_frame_vid(frame) {
+    let (clean_frame, vid) = if let Some(_fvid) = get_frame_vid(frame) {
         // Tagged frame: use embedded VID
         let (uf, v) = untag_frame(frame);
         (uf, v)
