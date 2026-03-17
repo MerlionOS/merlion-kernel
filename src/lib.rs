@@ -303,3 +303,6 @@ pub mod pkg_net;
 pub mod pam;
 pub mod oci_runtime;
 pub mod kvm;
+pub mod llm;
+pub mod ai_admin;
+pub mod self_host;

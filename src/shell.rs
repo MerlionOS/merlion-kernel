@@ -3684,6 +3684,91 @@ pub fn dispatch(cmd: &str) {
         "kvm-info" => { println!("{}", crate::kvm::kvm_info()); }
         "kvm-stats" => { println!("{}", crate::kvm::kvm_stats()); }
 
+        // ── LLM commands ───────────────────────────────────────────
+        cmd if cmd.starts_with("llm-load ") => {
+            let path = cmd.strip_prefix("llm-load ").unwrap().trim();
+            match crate::llm::load(path) {
+                Ok(()) => println!("LLM model loaded from '{}'", path),
+                Err(e) => println!("llm-load: {}", e),
+            }
+        }
+        "llm-info" => { println!("{}", crate::llm::llm_info()); }
+        "llm-stats" => { println!("{}", crate::llm::llm_stats()); }
+        cmd if cmd.starts_with("llm-generate ") => {
+            let prompt = cmd.strip_prefix("llm-generate ").unwrap().trim();
+            let output = crate::llm::generate_text(prompt, 32);
+            println!("{}", output);
+        }
+        "llm-demo" => { println!("{}", crate::llm::demo_generate()); }
+        cmd if cmd.starts_with("ai-chat ") => {
+            let msg = cmd.strip_prefix("ai-chat ").unwrap().trim();
+            let output = crate::llm::generate_text(msg, 64);
+            println!("[ai] {}", output);
+        }
+
+        // -- v99: AI System Administrator --
+        "diagnose" => {
+            let results = crate::ai_admin::diagnose();
+            if results.is_empty() {
+                println!("No issues detected. System healthy.");
+            } else {
+                for d in &results {
+                    println!("[{}] severity={} {}", d.category.as_str(), d.severity, d.description);
+                    println!("  Root cause: {}", d.root_cause);
+                    println!("  Recommendation: {}", d.recommendation);
+                    if d.auto_fixable { println!("  (auto-fixable)"); }
+                }
+            }
+        }
+        "auto-tune" => {
+            let changes = crate::ai_admin::auto_tune();
+            for c in &changes {
+                println!("  {}", c);
+            }
+        }
+        "ai-admin" => { println!("{}", crate::ai_admin::ai_admin_info()); }
+        "ai-admin-stats" => { println!("{}", crate::ai_admin::ai_admin_stats()); }
+        "security-audit" => { println!("{}", crate::ai_admin::security_audit()); }
+        "daily-report" => { println!("{}", crate::ai_admin::daily_report()); }
+        cmd if cmd.starts_with("nlconfig ") => {
+            let command = cmd.strip_prefix("nlconfig ").unwrap().trim();
+            println!("{}", crate::ai_admin::nl_config(command));
+        }
+        cmd if cmd.starts_with("predict ") => {
+            let rest = cmd.strip_prefix("predict ").unwrap().trim();
+            let parts: alloc::vec::Vec<&str> = rest.splitn(2, ' ').collect();
+            let metric = match parts[0] {
+                "cpu" => crate::ai_admin::MetricKind::CpuUsage,
+                "mem" | "memory" => crate::ai_admin::MetricKind::MemoryUsage,
+                "disk" => crate::ai_admin::MetricKind::DiskIo,
+                "net" | "network" => crate::ai_admin::MetricKind::NetworkTraffic,
+                "procs" => crate::ai_admin::MetricKind::ProcessCount,
+                "load" => crate::ai_admin::MetricKind::LoadAverage,
+                _ => { println!("predict: unknown metric (cpu/mem/disk/net/procs/load)"); return; }
+            };
+            let hours = if parts.len() > 1 { parts[1].parse().unwrap_or(6) } else { 6 };
+            println!("{}", crate::ai_admin::predict_alert(metric, hours));
+        }
+
+        // -- v100: Self-Hosting Compiler --
+        cmd if cmd.starts_with("compile ") => {
+            let path = cmd.strip_prefix("compile ").unwrap().trim();
+            match crate::self_host::compile_file(path) {
+                Ok(code) => println!("Compiled {} -> {} bytes of machine code", path, code.len()),
+                Err(e) => println!("compile: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("build ") => {
+            let dir = cmd.strip_prefix("build ").unwrap().trim();
+            match crate::self_host::build_project(dir) {
+                Ok(msg) => println!("{}", msg),
+                Err(e) => println!("build: {}", e),
+            }
+        }
+        "self-test" => { println!("{}", crate::self_host::self_build_test()); }
+        "bootstrap-info" => { println!("{}", crate::self_host::self_host_info()); }
+        "bootstrap-stats" => { println!("{}", crate::self_host::self_host_stats()); }
+
         _ => {
             // Try AI natural language interpretation
             if let Some(ai_cmd) = ai_shell::interpret(cmd) {

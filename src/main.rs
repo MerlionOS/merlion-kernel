@@ -204,6 +204,9 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     pam::init();
     oci_runtime::init();
     kvm::init();
+    llm::init();
+    ai_admin::init();
+    self_host::init();
     script::create_default_init();
     println!("[ok] AI subsystem ready");
     serial_println!("[ok] AI agents + proxy initialized");
