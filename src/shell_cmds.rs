@@ -2041,9 +2041,15 @@ pub fn dispatch_network(cmd: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════════
 
 pub fn dispatch_hardware(cmd: &str) -> bool {
-    use crate::{virtio, virtio_blk, ahci, nvme, xhci, e1000e, ioapic, gpt, power, rtl8139, rtl8169, intel_i225, usb_mass, sata};
+    use crate::{virtio, virtio_blk, ahci, nvme, xhci, e1000e, ioapic, gpt, power, rtl8139, rtl8169, intel_i225, usb_mass, sata, amdgpu};
 
     match cmd {
+        "amdgpu" | "amdgpu-info" => {
+            println!("{}", amdgpu::amdgpu_info());
+        }
+        "amdgpu-regs" => {
+            println!("{}", amdgpu::amdgpu_stats());
+        }
         "virtio" => {
             let devs = virtio::scan();
             if devs.is_empty() {
