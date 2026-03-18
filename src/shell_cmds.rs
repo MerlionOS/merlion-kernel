@@ -519,6 +519,12 @@ pub fn dispatch_process(cmd: &str) -> bool {
         "ulibc" | "libc-info" => {
             print!("{}", crate::ulibc::info());
         }
+        "dynlink" | "dynlink-info" => {
+            print!("{}", crate::dynlink::info());
+        }
+        "dllist" => {
+            print!("{}", crate::dynlink::list_libraries());
+        }
 
         _ => return false,
     }

@@ -37,13 +37,25 @@ const USER_CS: u64 = 0x33;
 //  TYPES
 // ═══════════════════════════════════════════════════════════════════
 
+/// Per-process file descriptor kind.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ProcFdKind {
+    VfsFile,
+    Serial,
+    Null,
+}
+
 /// Per-process file descriptor entry.
 #[derive(Clone)]
 pub struct FdEntry {
     pub path: String,
     pub offset: usize,
     pub flags: u32,
+    pub kind: ProcFdKind,
 }
+
+/// Maximum per-process file descriptors.
+const MAX_PROC_FDS: usize = 32;
 
 /// Process state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +70,7 @@ pub enum UserProcessState {
 /// User process descriptor.
 pub struct UserProcess {
     pub pid: u32,
+    pub parent_pid: u32,
     pub name: String,
     pub state: UserProcessState,
     pub page_table_phys: u64,
@@ -65,20 +78,21 @@ pub struct UserProcess {
     pub user_stack_top: u64,
     pub brk: u64,
     pub exit_code: Option<i32>,
-    pub fd_table: [Option<FdEntry>; 16],
+    pub fd_table: [Option<FdEntry>; MAX_PROC_FDS],
 }
 
 impl UserProcess {
     fn new(pid: u32, name: &str) -> Self {
         // Pre-open stdin, stdout, stderr
         const NONE_FD: Option<FdEntry> = None;
-        let mut fds = [NONE_FD; 16];
-        fds[0] = Some(FdEntry { path: String::from("/dev/stdin"), offset: 0, flags: 0 });
-        fds[1] = Some(FdEntry { path: String::from("/dev/stdout"), offset: 0, flags: 1 });
-        fds[2] = Some(FdEntry { path: String::from("/dev/stderr"), offset: 0, flags: 1 });
+        let mut fds = [NONE_FD; MAX_PROC_FDS];
+        fds[0] = Some(FdEntry { path: String::from("/dev/stdin"), offset: 0, flags: 0, kind: ProcFdKind::Serial });
+        fds[1] = Some(FdEntry { path: String::from("/dev/stdout"), offset: 0, flags: 1, kind: ProcFdKind::Serial });
+        fds[2] = Some(FdEntry { path: String::from("/dev/stderr"), offset: 0, flags: 1, kind: ProcFdKind::Serial });
 
         Self {
             pid,
+            parent_pid: 0,
             name: String::from(name),
             state: UserProcessState::Ready,
             page_table_phys: 0,
@@ -598,6 +612,8 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "printf-test" => Some(crate::ulibc::gen_printf_test()),
         "string-test" => Some(crate::ulibc::gen_string_test()),
         "libc-demo"   => Some(crate::ulibc::gen_libc_demo()),
+        // U6 dynamic linking
+        "dynlink-test" => Some(crate::dynlink::gen_dynlink_test()),
         _ => None,
     };
     gen_code.map(|c| build_elf64(&c))
@@ -610,6 +626,8 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         "syscall-test", "open-test", "exec-test",
         // U5 libc programs
         "malloc-test", "printf-test", "string-test", "libc-demo",
+        // U6 dynamic linking
+        "dynlink-test",
     ]
 }
 
@@ -729,7 +747,7 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     table.slots[slot] = Some(proc);
 
     // Load libc pages for U5 programs
-    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo");
+    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test");
     if is_libc_program {
         ensure_libc_loaded()?;
     }
@@ -813,6 +831,158 @@ pub fn handle_brk(pid: u32, new_brk: u64) -> u64 {
 
 #[cfg(not(target_arch = "x86_64"))]
 pub fn handle_brk(_pid: u32, _new_brk: u64) -> u64 { 0 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  PER-PROCESS FILE DESCRIPTORS
+// ═══════════════════════════════════════════════════════════════════
+
+/// Open a file in a process's fd table. Returns fd number.
+pub fn proc_open(pid: u32, path: &str, flags: u32) -> Result<usize, &'static str> {
+    let mut table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_mut().unwrap();
+
+    let kind = match path {
+        "/dev/null" => ProcFdKind::Null,
+        "/dev/serial" | "/dev/stdin" | "/dev/stdout" | "/dev/stderr" => ProcFdKind::Serial,
+        _ => ProcFdKind::VfsFile,
+    };
+
+    for i in 3..MAX_PROC_FDS {
+        if proc.fd_table[i].is_none() {
+            proc.fd_table[i] = Some(FdEntry {
+                path: String::from(path),
+                offset: 0,
+                flags,
+                kind,
+            });
+            return Ok(i);
+        }
+    }
+    Err("too many open files")
+}
+
+/// Read from a process's fd. Returns bytes read.
+pub fn proc_read(pid: u32, fd: usize, buf: &mut [u8]) -> Result<usize, &'static str> {
+    let table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_ref().unwrap();
+
+    if fd >= MAX_PROC_FDS {
+        return Err("invalid fd");
+    }
+    let entry = proc.fd_table[fd].as_ref().ok_or("fd not open")?;
+
+    match entry.kind {
+        ProcFdKind::Null => Ok(0),
+        ProcFdKind::Serial => Ok(0),
+        ProcFdKind::VfsFile => {
+            match crate::vfs::cat(&entry.path) {
+                Ok(content) => {
+                    let bytes = content.as_bytes();
+                    let to_copy = buf.len().min(bytes.len());
+                    buf[..to_copy].copy_from_slice(&bytes[..to_copy]);
+                    Ok(to_copy)
+                }
+                Err(e) => Err(e),
+            }
+        }
+    }
+}
+
+/// Write to a process's fd. Returns bytes written.
+pub fn proc_write(pid: u32, fd: usize, data: &[u8]) -> Result<usize, &'static str> {
+    let table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_ref().unwrap();
+
+    if fd >= MAX_PROC_FDS {
+        return Err("invalid fd");
+    }
+    let entry = proc.fd_table[fd].as_ref().ok_or("fd not open")?;
+
+    match entry.kind {
+        ProcFdKind::Null => Ok(data.len()),
+        ProcFdKind::Serial => {
+            if let Ok(s) = core::str::from_utf8(data) {
+                crate::serial_println!("{}", s);
+            }
+            Ok(data.len())
+        }
+        ProcFdKind::VfsFile => {
+            if let Ok(s) = core::str::from_utf8(data) {
+                crate::vfs::write(&entry.path, s)?;
+            }
+            Ok(data.len())
+        }
+    }
+}
+
+/// Close an fd in a process's fd table.
+pub fn proc_close(pid: u32, fd: usize) -> Result<(), &'static str> {
+    let mut table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_mut().unwrap();
+
+    if fd >= MAX_PROC_FDS {
+        return Err("invalid fd");
+    }
+    if proc.fd_table[fd].is_none() {
+        return Err("fd not open");
+    }
+    proc.fd_table[fd] = None;
+    Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  FORK
+// ═══════════════════════════════════════════════════════════════════
+
+/// Fork a process: create a child with a copy of the parent's state.
+/// Returns the child's PID.
+pub fn fork_process(parent_pid: u32) -> Result<u32, &'static str> {
+    let mut table = PROCESS_TABLE.lock();
+    let parent_slot = table.find_by_pid(parent_pid).ok_or("parent not found")?;
+
+    let child_pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
+    let child_slot = table.find_slot().ok_or("process table full")?;
+
+    // Clone parent state
+    let parent = table.slots[parent_slot].as_ref().unwrap();
+    let mut child = UserProcess::new(child_pid, &format!("{}", parent.name));
+    child.parent_pid = parent_pid;
+    child.brk = parent.brk;
+    child.entry_point = parent.entry_point;
+    child.user_stack_top = parent.user_stack_top;
+    child.state = UserProcessState::Ready;
+    child.page_table_phys = parent.page_table_phys;
+
+    // Copy fd table from parent
+    for i in 0..MAX_PROC_FDS {
+        child.fd_table[i] = parent.fd_table[i].clone();
+    }
+
+    table.slots[child_slot] = Some(child);
+
+    serial_println!("[userspace] fork: parent pid={} -> child pid={}", parent_pid, child_pid);
+    klog_println!("[userspace] fork: parent pid={} -> child pid={}", parent_pid, child_pid);
+
+    Ok(child_pid)
+}
+
+/// Wait for a child process to exit. Returns exit code or error.
+pub fn waitpid_blocking(wait_pid: u32) -> Result<i32, &'static str> {
+    // Check if the process has exited
+    let table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(wait_pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_ref().unwrap();
+    if proc.state == UserProcessState::Exited || proc.state == UserProcessState::Zombie {
+        let code = proc.exit_code.unwrap_or(0);
+        // Don't clean up slot here — let wait_process do it
+        return Ok(code);
+    }
+    Err("process still running")
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  LIBC PAGE LOADING (U5)

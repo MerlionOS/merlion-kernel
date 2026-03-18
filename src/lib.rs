@@ -68,6 +68,7 @@ pub mod dhcp_client;
 pub mod dhcpd;
 pub mod diff;
 pub mod diskfs;
+pub mod dynlink;
 pub mod display_mgr;
 pub mod dns_client;
 pub mod dnsd;

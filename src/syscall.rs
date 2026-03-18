@@ -129,6 +129,11 @@ const SYS_DUP2: u64 = 152;
 // Libc support (160-169) — U5
 const SYS_PRINTF: u64 = 160;
 
+// Dynamic linking (170-179) — U6
+const SYS_DLOPEN: u64 = 170;
+const SYS_DLSYM: u64 = 171;
+const SYS_DLCLOSE: u64 = 172;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -278,14 +283,29 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         SYS_OPEN => {
             // open(path_ptr, path_len, flags) → fd
             if let Some(path) = read_user_str(arg1, arg2) {
-                match crate::fd::open(&path) {
-                    Ok(fd) => {
-                        serial_println!("[syscall] open({}) = fd {}", path, fd);
-                        set_retval(fd as i64);
+                let flags = arg3 as u32;
+                // Use per-process fd table if user process is active
+                if let Some(pid) = crate::userspace::current_process() {
+                    match crate::userspace::proc_open(pid, &path, flags) {
+                        Ok(fd) => {
+                            serial_println!("[syscall] open({}) = fd {} (pid {})", path, fd, pid);
+                            set_retval(fd as i64);
+                        }
+                        Err(e) => {
+                            serial_println!("[syscall] open({}) failed: {}", path, e);
+                            set_retval(-1);
+                        }
                     }
-                    Err(e) => {
-                        serial_println!("[syscall] open({}) failed: {}", path, e);
-                        set_retval(-1);
+                } else {
+                    match crate::fd::open(&path) {
+                        Ok(fd) => {
+                            serial_println!("[syscall] open({}) = fd {}", path, fd);
+                            set_retval(fd as i64);
+                        }
+                        Err(e) => {
+                            serial_println!("[syscall] open({}) failed: {}", path, e);
+                            set_retval(-1);
+                        }
                     }
                 }
             } else {
@@ -304,7 +324,12 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 return 0;
             }
             let mut tmp = alloc::vec![0u8; len];
-            match crate::fd::read(fd, &mut tmp) {
+            let result = if let Some(pid) = crate::userspace::current_process() {
+                crate::userspace::proc_read(pid, fd, &mut tmp)
+            } else {
+                crate::fd::read(fd, &mut tmp)
+            };
+            match result {
                 Ok(n) => {
                     unsafe { write_user_buf(buf_ptr, &tmp[..n], len as u64) };
                     serial_println!("[syscall] read(fd {}) = {} bytes", fd, n);
@@ -320,7 +345,12 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         SYS_CLOSE => {
             // close(fd) → 0
             let fd = arg1 as usize;
-            match crate::fd::close(fd) {
+            let result = if let Some(pid) = crate::userspace::current_process() {
+                crate::userspace::proc_close(pid, fd).map(|_| ())
+            } else {
+                crate::fd::close(fd)
+            };
+            match result {
                 Ok(()) => {
                     serial_println!("[syscall] close(fd {}) ok", fd);
                     set_retval(0);
@@ -457,8 +487,21 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         // ── Process operations ───────────────────────────────────────
 
         SYS_FORK => {
-            serial_println!("[syscall] fork() — not implemented, returning -1");
-            set_retval(-1);
+            if let Some(parent_pid) = crate::userspace::current_process() {
+                match crate::userspace::fork_process(parent_pid) {
+                    Ok(child_pid) => {
+                        serial_println!("[syscall] fork() = {} (parent {})", child_pid, parent_pid);
+                        set_retval(child_pid as i64);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] fork() failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                serial_println!("[syscall] fork() — no user process context");
+                set_retval(-1);
+            }
         }
 
         SYS_EXEC => {
@@ -493,9 +536,17 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         }
 
         SYS_WAITPID => {
-            let wait_pid = arg1;
-            serial_println!("[syscall] waitpid({}) — not implemented, returning -1", wait_pid);
-            set_retval(-1);
+            let wait_pid = arg1 as u32;
+            match crate::userspace::waitpid_blocking(wait_pid) {
+                Ok(code) => {
+                    serial_println!("[syscall] waitpid({}) = {} (exited)", wait_pid, code);
+                    set_retval(code as i64);
+                }
+                Err(e) => {
+                    serial_println!("[syscall] waitpid({}) — {}", wait_pid, e);
+                    set_retval(-1);
+                }
+            }
         }
 
         SYS_BRK => {
@@ -767,6 +818,41 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 serial_println!("[syscall] printf: invalid format string");
                 set_retval(-1);
             }
+        }
+
+        // ── Dynamic linking (U6) ───────────────────────────────────
+
+        SYS_DLOPEN => {
+            // dlopen(name_ptr, name_len) → handle
+            if let Some(name) = read_user_str(arg1, arg2) {
+                let handle = crate::dynlink::dlopen(&name);
+                serial_println!("[syscall] dlopen({}) = {}", name, handle);
+                set_retval(handle as i64);
+            } else {
+                serial_println!("[syscall] dlopen: invalid name");
+                set_retval(0);
+            }
+        }
+
+        SYS_DLSYM => {
+            // dlsym(handle, name_ptr, name_len) → func_addr
+            let handle = arg1;
+            if let Some(name) = read_user_str(arg2, arg3) {
+                let addr = crate::dynlink::dlsym(handle, &name);
+                serial_println!("[syscall] dlsym({}, {}) = {:#x}", handle, name, addr);
+                set_retval(addr as i64);
+            } else {
+                serial_println!("[syscall] dlsym: invalid name");
+                set_retval(0);
+            }
+        }
+
+        SYS_DLCLOSE => {
+            // dlclose(handle) → 0
+            let handle = arg1;
+            let result = crate::dynlink::dlclose(handle);
+            serial_println!("[syscall] dlclose({}) = {}", handle, result);
+            set_retval(result);
         }
 
         _ => {
