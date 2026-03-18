@@ -354,6 +354,106 @@ const GETPID_CODE: &[u8] = &[
     b'g', b'e', b't', b'p', b'i', b'd', b' ', b'o', b'k', b'!', b'\n', 0,
 ];
 
+/// Syscall-test program: calls SYS_GETPID, converts return value to ASCII digit,
+/// writes "pid=N\n" via SYS_WRITE, then exits. Proves syscall return values work.
+#[rustfmt::skip]
+const SYSCALL_TEST_CODE: &[u8] = &[
+    // mov rax, 3 (SYS_GETPID)
+    0x48, 0xC7, 0xC0, 0x03, 0x00, 0x00, 0x00,
+    // int 0x80 — rax now has PID
+    0xCD, 0x80,
+    // add al, 0x30 — convert PID (0-9) to ASCII digit
+    0x04, 0x30,
+    // lea rcx, [rip+0x42] — points to buf at offset 84
+    0x48, 0x8D, 0x0D, 0x42, 0x00, 0x00, 0x00,
+    // mov [rcx], al — store digit in buf
+    0x88, 0x01,
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip+0x2E] — points to msg "pid=" at offset 80
+    0x48, 0x8D, 0x3D, 0x2E, 0x00, 0x00, 0x00,
+    // mov rsi, 4 (len of "pid=")
+    0x48, 0xC7, 0xC6, 0x04, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip+0x1B] — points to buf at offset 84
+    0x48, 0x8D, 0x3D, 0x1B, 0x00, 0x00, 0x00,
+    // mov rsi, 2 (digit + newline)
+    0x48, 0xC7, 0xC6, 0x02, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 1 (SYS_EXIT)
+    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+    // xor rdi, rdi — exit code 0
+    0x48, 0x31, 0xFF,
+    // int 0x80
+    0xCD, 0x80,
+    // jmp $ (safety halt)
+    0xEB, 0xFE,
+    // msg: "pid=" (offset 80)
+    b'p', b'i', b'd', b'=',
+    // buf: "0\n" (offset 84) — digit placeholder + newline
+    b'0', b'\n',
+];
+
+/// Open-test program: calls SYS_OPEN("/tmp"), prints "fd=open:N\n", then exits.
+/// Tests that SYS_OPEN returns a valid fd in rax.
+#[rustfmt::skip]
+const OPEN_TEST_CODE: &[u8] = &[
+    // mov rax, 100 (SYS_OPEN)
+    0x48, 0xC7, 0xC0, 0x64, 0x00, 0x00, 0x00,
+    // lea rdi, [rip+0x5D] — points to path "/tmp" at offset 107
+    0x48, 0x8D, 0x3D, 0x5D, 0x00, 0x00, 0x00,
+    // mov rsi, 4 (path_len)
+    0x48, 0xC7, 0xC6, 0x04, 0x00, 0x00, 0x00,
+    // xor rdx, rdx — flags=0
+    0x48, 0x31, 0xD2,
+    // int 0x80 — rax now has fd
+    0xCD, 0x80,
+    // push rax — save fd
+    0x50,
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip+0x3A] — points to msg "fd=open:" at offset 99
+    0x48, 0x8D, 0x3D, 0x3A, 0x00, 0x00, 0x00,
+    // mov rsi, 8 (len of "fd=open:")
+    0x48, 0xC7, 0xC6, 0x08, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // pop rax — restore fd
+    0x58,
+    // add al, 0x30 — convert fd to ASCII digit
+    0x04, 0x30,
+    // lea rcx, [rip+0x33] — points to digit at offset 111
+    0x48, 0x8D, 0x0D, 0x33, 0x00, 0x00, 0x00,
+    // mov [rcx], al — store digit
+    0x88, 0x01,
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip+0x23] — points to digit at offset 111
+    0x48, 0x8D, 0x3D, 0x23, 0x00, 0x00, 0x00,
+    // mov rsi, 2 (digit + newline)
+    0x48, 0xC7, 0xC6, 0x02, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 1 (SYS_EXIT)
+    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+    // xor rdi, rdi — exit code 0
+    0x48, 0x31, 0xFF,
+    // int 0x80
+    0xCD, 0x80,
+    // jmp $ (safety halt)
+    0xEB, 0xFE,
+    // msg: "fd=open:" (offset 99)
+    b'f', b'd', b'=', b'o', b'p', b'e', b'n', b':',
+    // path: "/tmp" (offset 107)
+    b'/', b't', b'm', b'p',
+    // digit: "0\n" (offset 111)
+    b'0', b'\n',
+];
+
 /// Build a minimal valid ELF64 executable wrapping raw machine code.
 fn build_elf64(code: &[u8]) -> Vec<u8> {
     let ehdr_size: u64 = 64;
@@ -412,6 +512,8 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "qfc-test" => QFC_TEST_CODE,
         "counter" => COUNTER_CODE,
         "getpid" => GETPID_CODE,
+        "syscall-test" => SYSCALL_TEST_CODE,
+        "open-test" => OPEN_TEST_CODE,
         _ => return None,
     };
     Some(build_elf64(code))
@@ -419,7 +521,7 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
 
 /// List available built-in program names.
 pub fn list_builtin_programs() -> &'static [&'static str] {
-    &["hello", "cat-test", "qfc-test", "counter", "getpid"]
+    &["hello", "cat-test", "qfc-test", "counter", "getpid", "syscall-test", "open-test"]
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -181,6 +181,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 serial_println!("[user] {}", s);
                 println!("[user] {}", s);
             }
+            set_retval(len as i64);
         }
         SYS_EXIT => {
             let code = arg1 as i32;
@@ -231,6 +232,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         SYS_GETUID => {
             let uid = crate::security::current_uid();
             serial_println!("[syscall] getuid() = {}", uid);
+            set_retval(uid as i64);
         }
         SYS_SETUID => {
             let target_uid = arg1 as u32;
@@ -249,6 +251,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         SYS_GETGID => {
             let gid = crate::security::current_gid();
             serial_println!("[syscall] getgid() = {}", gid);
+            set_retval(gid as i64);
         }
         SYS_SETGID => {
             let _target_gid = arg1 as u32;
@@ -275,13 +278,16 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 match crate::fd::open(&path) {
                     Ok(fd) => {
                         serial_println!("[syscall] open({}) = fd {}", path, fd);
+                        set_retval(fd as i64);
                     }
                     Err(e) => {
                         serial_println!("[syscall] open({}) failed: {}", path, e);
+                        set_retval(-1);
                     }
                 }
             } else {
                 serial_println!("[syscall] open: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -299,9 +305,11 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 Ok(n) => {
                     unsafe { write_user_buf(buf_ptr, &tmp[..n], len as u64) };
                     serial_println!("[syscall] read(fd {}) = {} bytes", fd, n);
+                    set_retval(n as i64);
                 }
                 Err(e) => {
                     serial_println!("[syscall] read(fd {}) failed: {}", fd, e);
+                    set_retval(-1);
                 }
             }
         }
@@ -312,9 +320,11 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             match crate::fd::close(fd) {
                 Ok(()) => {
                     serial_println!("[syscall] close(fd {}) ok", fd);
+                    set_retval(0);
                 }
                 Err(e) => {
                     serial_println!("[syscall] close(fd {}) failed: {}", fd, e);
+                    set_retval(-1);
                 }
             }
         }
@@ -326,13 +336,16 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 match crate::vfs::cat(&path) {
                     Ok(_) => {
                         serial_println!("[syscall] stat({}) ok", path);
+                        set_retval(0);
                     }
                     Err(e) => {
                         serial_println!("[syscall] stat({}) failed: {}", path, e);
+                        set_retval(-1);
                     }
                 }
             } else {
                 serial_println!("[syscall] stat: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -350,13 +363,16 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 match crate::vfs::mkdir(&path) {
                     Ok(()) => {
                         serial_println!("[syscall] mkdir({}) ok", path);
+                        set_retval(0);
                     }
                     Err(e) => {
                         serial_println!("[syscall] mkdir({}) failed: {}", path, e);
+                        set_retval(-1);
                     }
                 }
             } else {
                 serial_println!("[syscall] mkdir: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -366,13 +382,16 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 match crate::vfs::rm(&path) {
                     Ok(()) => {
                         serial_println!("[syscall] unlink({}) ok", path);
+                        set_retval(0);
                     }
                     Err(e) => {
                         serial_println!("[syscall] unlink({}) failed: {}", path, e);
+                        set_retval(-1);
                     }
                 }
             } else {
                 serial_println!("[syscall] unlink: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -392,13 +411,16 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                             unsafe { write_user_buf(arg3, output.as_bytes(), 4096) };
                         }
                         serial_println!("[syscall] readdir({}) = {} entries", path, entries.len());
+                        set_retval(entries.len() as i64);
                     }
                     Err(e) => {
                         serial_println!("[syscall] readdir({}) failed: {}", path, e);
+                        set_retval(-1);
                     }
                 }
             } else {
                 serial_println!("[syscall] readdir: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -407,8 +429,10 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             if let Some(path) = read_user_str(arg1, arg2) {
                 crate::env::set("PWD", &path);
                 serial_println!("[syscall] chdir({}) ok", path);
+                set_retval(0);
             } else {
                 serial_println!("[syscall] chdir: invalid path pointer");
+                set_retval(-1);
             }
         }
 
@@ -420,8 +444,10 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             if buf_ptr != 0 && buf_len > 0 {
                 let n = unsafe { write_user_buf(buf_ptr, cwd.as_bytes(), buf_len) };
                 serial_println!("[syscall] getcwd() = {} ({} bytes)", cwd, n);
+                set_retval(n as i64);
             } else {
                 serial_println!("[syscall] getcwd: invalid buffer");
+                set_retval(-1);
             }
         }
 
@@ -429,6 +455,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
 
         SYS_FORK => {
             serial_println!("[syscall] fork() — not implemented, returning -1");
+            set_retval(-1);
         }
 
         SYS_EXEC => {
@@ -437,27 +464,32 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             } else {
                 serial_println!("[syscall] exec: invalid path, returning -1");
             }
+            set_retval(-1);
         }
 
         SYS_WAITPID => {
             let wait_pid = arg1;
             serial_println!("[syscall] waitpid({}) — not implemented, returning -1", wait_pid);
+            set_retval(-1);
         }
 
         SYS_BRK => {
             let addr = arg1;
             serial_println!("[syscall] brk(0x{:x}) — stub, returning current brk", addr);
+            set_retval(0);
         }
 
         SYS_GETPPID => {
             // Return 0 (kernel) as parent for now
             serial_println!("[syscall] getppid() = 0 (stub)");
+            set_retval(0);
         }
 
         SYS_KILL => {
             let target_pid = arg1;
             let signal = arg2;
             serial_println!("[syscall] kill(pid {}, sig {}) — stub", target_pid, signal);
+            set_retval(-1);
         }
 
         // ── Memory operations ────────────────────────────────────────
@@ -466,12 +498,14 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let addr = arg1;
             let len = arg2;
             serial_println!("[syscall] mmap(0x{:x}, {}) — not implemented, returning -1", addr, len);
+            set_retval(-1);
         }
 
         SYS_MUNMAP => {
             let addr = arg1;
             let len = arg2;
             serial_println!("[syscall] munmap(0x{:x}, {}) — not implemented, returning -1", addr, len);
+            set_retval(-1);
         }
 
         SYS_MPROTECT => {
@@ -479,6 +513,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let len = arg2;
             let prot = arg3;
             serial_println!("[syscall] mprotect(0x{:x}, {}, 0x{:x}) — not implemented, returning -1", addr, len, prot);
+            set_retval(-1);
         }
 
         // ── Network operations ───────────────────────────────────────
@@ -488,39 +523,46 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let sock_type = arg2;
             let protocol = arg3;
             serial_println!("[syscall] socket({}, {}, {}) — not implemented, returning -1", domain, sock_type, protocol);
+            set_retval(-1);
         }
 
         SYS_CONNECT => {
             let fd = arg1;
             serial_println!("[syscall] connect(fd {}) — not implemented, returning -1", fd);
+            set_retval(-1);
         }
 
         SYS_SENDTO => {
             let fd = arg1;
             let len = arg3;
             serial_println!("[syscall] sendto(fd {}, {} bytes) — not implemented, returning -1", fd, len);
+            set_retval(-1);
         }
 
         SYS_RECVFROM => {
             let fd = arg1;
             let len = arg3;
             serial_println!("[syscall] recvfrom(fd {}, {} bytes) — not implemented, returning -1", fd, len);
+            set_retval(-1);
         }
 
         SYS_BIND => {
             let fd = arg1;
             serial_println!("[syscall] bind(fd {}) — not implemented, returning -1", fd);
+            set_retval(-1);
         }
 
         SYS_LISTEN => {
             let fd = arg1;
             let backlog = arg2;
             serial_println!("[syscall] listen(fd {}, backlog {}) — not implemented, returning -1", fd, backlog);
+            set_retval(-1);
         }
 
         SYS_ACCEPT => {
             let fd = arg1;
             serial_println!("[syscall] accept(fd {}) — not implemented, returning -1", fd);
+            set_retval(-1);
         }
 
         // ── Time operations ──────────────────────────────────────────
@@ -540,6 +582,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 task::yield_now();
             }
             serial_println!("[syscall] nanosleep({} ms) done", ms);
+            set_retval(0);
         }
 
         SYS_CLOCK_GETTIME => {
@@ -555,8 +598,10 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 };
                 unsafe { write_user_buf(buf_ptr, bytes, 16) };
                 serial_println!("[syscall] clock_gettime() = {}s, {} ticks", secs, ticks);
+                set_retval(0);
             } else {
                 serial_println!("[syscall] clock_gettime: null buffer");
+                set_retval(-1);
             }
         }
 
@@ -566,20 +611,24 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let fd = arg1;
             let request = arg2;
             serial_println!("[syscall] ioctl(fd {}, req 0x{:x}) — not implemented, returning -1", fd, request);
+            set_retval(-1);
         }
 
         SYS_PIPE => {
             serial_println!("[syscall] pipe() — not implemented, returning -1");
+            set_retval(-1);
         }
 
         SYS_DUP2 => {
             let oldfd = arg1;
             let newfd = arg2;
             serial_println!("[syscall] dup2({}, {}) — not implemented, returning -1", oldfd, newfd);
+            set_retval(-1);
         }
 
         _ => {
             serial_println!("[syscall] unknown syscall {}", syscall_num);
+            set_retval(-1);
         }
     }
 
