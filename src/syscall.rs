@@ -180,8 +180,18 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
             }
         }
         SYS_EXIT => {
-            let code = arg1 as usize;
+            let code = arg1 as i32;
             serial_println!("[syscall] exit({})", code);
+            let user_pid = crate::userspace::current_process();
+            if let Some(pid) = user_pid {
+                crate::userspace::exit_process(pid, code);
+                serial_println!("[userspace] process pid={} exited with code {}", pid, code);
+                crate::userspace::return_to_kernel();
+                // return_to_kernel sets flag — just return from syscall handler
+                // The iret will go back to user code's jmp$ loop
+                // Keyboard interrupts will still reach the shell
+                return;
+            }
             klog_println!("[syscall] process exited with code {}", code);
             task::exit();
         }

@@ -499,12 +499,18 @@ pub fn create_process(name: &str, _elf_data: &[u8]) -> Result<u32, &'static str>
 //  ENTER USERSPACE
 // ═══════════════════════════════════════════════════════════════════
 
-/// Switch to Ring 3 and start executing user code for the given process.
+/// Flag: set to true when user process has exited.
+static USER_EXITED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Switch to Ring 3 and start executing user code.
+/// Does NOT return — the user process runs until SYS_EXIT.
+/// After SYS_EXIT, the iret returns to user's jmp$ loop,
+/// and timer/keyboard interrupts resume normal kernel operation.
 #[cfg(target_arch = "x86_64")]
-pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
+pub fn enter_userspace(pid: u32) -> ! {
     let (entry, stack, _cr3) = {
         let mut table = PROCESS_TABLE.lock();
-        let slot = table.find_by_pid(pid).ok_or("process not found")?;
+        let slot = table.find_by_pid(pid).expect("process not found");
         let proc = table.slots[slot].as_mut().unwrap();
         proc.state = UserProcessState::Running;
         (proc.entry_point, proc.user_stack_top, proc.page_table_phys)
@@ -514,35 +520,45 @@ pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
 
     serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x}", pid, entry, stack);
 
-    // EOI + interrupts already handled by shell_cmds before calling us
+    USER_EXITED.store(false, core::sync::atomic::Ordering::SeqCst);
+
     unsafe {
-        do_iretq(entry, stack, 0);
+        // iretq to Ring 3 — this does NOT return.
+        // When user calls SYS_EXIT, the syscall handler sets USER_EXITED=true
+        // and the user code hits its jmp$ loop. Timer interrupt preempts it
+        // and we check USER_EXITED in the loop below.
+        core::arch::asm!(
+            "push 0x2B",        // SS
+            "push {stack}",     // RSP
+            "push 0x200",       // RFLAGS
+            "push 0x33",        // CS
+            "push {entry}",     // RIP
+            "iretq",
+            stack = in(reg) stack,
+            entry = in(reg) entry,
+            options(noreturn),
+        );
     }
 }
 
-#[cfg(target_arch = "x86_64")]
-unsafe fn do_iretq(entry: u64, stack: u64, cr3_val: u64) -> ! {
-    // Skip CR3 switch for now — use kernel page table
-    let _ = cr3_val;
+/// Mark that userspace process has exited.
+/// Called from SYS_EXIT handler.
+pub fn return_to_kernel() {
+    USER_EXITED.store(true, core::sync::atomic::Ordering::SeqCst);
+    CURRENT_PID.store(0, Ordering::SeqCst);
+    // Don't try to restore kernel stack — just return from syscall.
+    // The user code's jmp$ loop + timer interrupt will handle the rest.
+}
 
-    // iretq to Ring 3
-    core::arch::asm!(
-        "push 0x2B",        // SS = user data (index 5, RPL 3)
-        "push {stack}",     // RSP = user stack
-        "push 0x200",       // RFLAGS = IF=1
-        "push 0x33",        // CS = user code (index 6, RPL 3)
-        "push {entry}",     // RIP = entry point
-        "iretq",
-        stack = in(reg) stack,
-        entry = in(reg) entry,
-        options(noreturn),
-    );
+/// Check if userspace process has finished.
+pub fn has_user_exited() -> bool {
+    USER_EXITED.load(core::sync::atomic::Ordering::SeqCst)
 }
 
 #[cfg(not(target_arch = "x86_64"))]
-pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
+pub fn enter_userspace(pid: u32) -> ! {
     serial_println!("[userspace] enter_userspace pid={}: not supported on this architecture", pid);
-    Err("userspace execution only supported on x86_64")
+    loop { core::hint::spin_loop(); }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -626,7 +642,8 @@ pub fn run_builtin(name: &str) -> Result<(), &'static str> {
     serial_println!("[userspace] run_builtin: got ELF data ({} bytes)", elf_data.len());
     let pid = create_process(name, &elf_data)?;
     serial_println!("[userspace] run_builtin: process created, entering userspace pid={}", pid);
-    enter_userspace(pid)
+    enter_userspace(pid);
+    // never reaches here
 }
 
 // ═══════════════════════════════════════════════════════════════════
