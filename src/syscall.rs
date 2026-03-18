@@ -143,7 +143,7 @@ unsafe fn write_user_buf(ptr: u64, data: &[u8], max_len: u64) -> usize {
     len
 }
 
-pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
+pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
     // Seccomp filter check
     let pid = task::current_pid();
     match crate::capability::seccomp_check(pid, syscall_num) {
@@ -162,6 +162,9 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
         crate::capability::FilterAction::Allow => {}
     }
 
+    // Reset return value
+    set_retval(0);
+
     // Syscall latency tracking
     let stats_start = crate::syscall_stats::begin();
 
@@ -171,7 +174,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
             let len = arg2 as usize;
             if buf.is_null() || len > 4096 {
                 serial_println!("[syscall] write: invalid args");
-                return;
+                return 0;
             }
             let slice = unsafe { core::slice::from_raw_parts(buf, len) };
             if let Ok(s) = core::str::from_utf8(slice) {
@@ -190,7 +193,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
                 // return_to_kernel sets flag — just return from syscall handler
                 // The iret will go back to user code's jmp$ loop
                 // Keyboard interrupts will still reach the shell
-                return;
+                return 0;
             }
             klog_println!("[syscall] process exited with code {}", code);
             task::exit();
@@ -200,6 +203,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
         }
         SYS_GETPID => {
             let pid = task::current_pid();
+            set_retval(pid as i64);
             serial_println!("[syscall] getpid() = {}", pid);
         }
         SYS_SLEEP => {
@@ -288,7 +292,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
             let len = arg3 as usize;
             if buf_ptr == 0 || len == 0 || len > 4096 {
                 serial_println!("[syscall] read: invalid args");
-                return;
+                return 0;
             }
             let mut tmp = alloc::vec![0u8; len];
             match crate::fd::read(fd, &mut tmp) {
@@ -523,6 +527,7 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
 
         SYS_TIME => {
             let secs = timer::uptime_secs();
+            set_retval(secs as i64);
             serial_println!("[syscall] time() = {} seconds since boot", secs);
         }
 
@@ -580,4 +585,13 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
 
     // Record syscall latency
     crate::syscall_stats::end(syscall_num, stats_start);
+    SYSCALL_RETVAL.load(core::sync::atomic::Ordering::SeqCst)
+}
+
+/// Syscall return value — set by handlers, read by trampoline.
+static SYSCALL_RETVAL: core::sync::atomic::AtomicI64 = core::sync::atomic::AtomicI64::new(0);
+
+/// Set syscall return value (called from within dispatch match arms).
+fn set_retval(val: i64) {
+    SYSCALL_RETVAL.store(val, core::sync::atomic::Ordering::SeqCst);
 }

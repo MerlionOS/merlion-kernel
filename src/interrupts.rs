@@ -181,10 +181,14 @@ extern "C" fn syscall_trampoline() {
         "mov rsi, [rsp+32]",  // arg2 = original rdi
         "mov rdi, [rsp+64]",  // arg1 = original rax
 
-        // Call the Rust dispatch function
+        // Call the Rust dispatch function (returns i64 in rax)
         "call {dispatch}",
 
-        // Restore registers
+        // Store return value (rax) where the saved rax will be popped from
+        // saved rax is at rsp+64 (9 pushes × 8 bytes, rax was first pushed)
+        "mov [rsp+64], rax",
+
+        // Restore registers (rax gets the return value from the stack)
         "pop r11",
         "pop r10",
         "pop r9",
@@ -193,7 +197,7 @@ extern "C" fn syscall_trampoline() {
         "pop rsi",
         "pop rdx",
         "pop rcx",
-        "pop rax",
+        "pop rax",  // ← now contains syscall return value!
 
         "iretq",
         dispatch = sym syscall_dispatch_inner,
@@ -202,6 +206,6 @@ extern "C" fn syscall_trampoline() {
 
 /// Rust-callable syscall dispatch. Called by the trampoline with the
 /// original user register values.
-extern "C" fn syscall_dispatch_inner(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) {
-    crate::syscall::dispatch(syscall_num, arg1, arg2, arg3);
+extern "C" fn syscall_dispatch_inner(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
+    crate::syscall::dispatch(syscall_num, arg1, arg2, arg3)
 }
