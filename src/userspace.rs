@@ -576,23 +576,41 @@ fn build_elf64(code: &[u8]) -> Vec<u8> {
 
 /// Look up a built-in user program by name, returning an ELF binary.
 pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
-    let code: &[u8] = match name {
-        "hello" => HELLO_CODE,
-        "cat-test" => CAT_TEST_CODE,
-        "qfc-test" => QFC_TEST_CODE,
-        "counter" => COUNTER_CODE,
-        "getpid" => GETPID_CODE,
-        "syscall-test" => SYSCALL_TEST_CODE,
-        "open-test" => OPEN_TEST_CODE,
-        "exec-test" => EXEC_TEST_CODE,
-        _ => return None,
+    // U1-U4 programs (raw machine code)
+    let code: Option<&[u8]> = match name {
+        "hello" => Some(HELLO_CODE),
+        "cat-test" => Some(CAT_TEST_CODE),
+        "qfc-test" => Some(QFC_TEST_CODE),
+        "counter" => Some(COUNTER_CODE),
+        "getpid" => Some(GETPID_CODE),
+        "syscall-test" => Some(SYSCALL_TEST_CODE),
+        "open-test" => Some(OPEN_TEST_CODE),
+        "exec-test" => Some(EXEC_TEST_CODE),
+        _ => None,
     };
-    Some(build_elf64(code))
+    if let Some(c) = code {
+        return Some(build_elf64(c));
+    }
+
+    // U5 programs (libc-based, generated at runtime)
+    let gen_code = match name {
+        "malloc-test" => Some(crate::ulibc::gen_malloc_test()),
+        "printf-test" => Some(crate::ulibc::gen_printf_test()),
+        "string-test" => Some(crate::ulibc::gen_string_test()),
+        "libc-demo"   => Some(crate::ulibc::gen_libc_demo()),
+        _ => None,
+    };
+    gen_code.map(|c| build_elf64(&c))
 }
 
 /// List available built-in program names.
 pub fn list_builtin_programs() -> &'static [&'static str] {
-    &["hello", "cat-test", "qfc-test", "counter", "getpid", "syscall-test", "open-test", "exec-test"]
+    &[
+        "hello", "cat-test", "qfc-test", "counter", "getpid",
+        "syscall-test", "open-test", "exec-test",
+        // U5 libc programs
+        "malloc-test", "printf-test", "string-test", "libc-demo",
+    ]
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -710,7 +728,14 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     let slot = table.find_slot().ok_or("process table full")?;
     table.slots[slot] = Some(proc);
 
-    serial_println!("[userspace] created process '{}' pid={} entry={:#x}", name, pid, elf.entry);
+    // Load libc pages for U5 programs
+    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo");
+    if is_libc_program {
+        ensure_libc_loaded()?;
+    }
+
+    serial_println!("[userspace] created process '{}' pid={} entry={:#x}{}", name, pid, elf.entry,
+        if is_libc_program { " [libc]" } else { "" });
     klog_println!("[userspace] created process '{}' pid={} entry={:#x}", name, pid, elf.entry);
 
     Ok(pid)
@@ -720,6 +745,138 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
 pub fn create_process(name: &str, _elf_data: &[u8]) -> Result<u32, &'static str> {
     serial_println!("[userspace] create_process '{}': not supported on this architecture", name);
     Err("userspace processes only supported on x86_64")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HEAP MANAGEMENT (brk)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Handle brk syscall for a user process.
+/// If new_brk == 0, returns current brk. Otherwise sets brk and maps pages.
+#[cfg(target_arch = "x86_64")]
+pub fn handle_brk(pid: u32, new_brk: u64) -> u64 {
+    use x86_64::structures::paging::{Page, PageTableFlags};
+    use x86_64::VirtAddr;
+
+    let mut table = PROCESS_TABLE.lock();
+    let slot = match table.find_by_pid(pid) {
+        Some(s) => s,
+        None => return 0,
+    };
+    let proc = match table.slots[slot].as_mut() {
+        Some(p) => p,
+        None => return 0,
+    };
+
+    if new_brk == 0 {
+        return proc.brk;
+    }
+
+    // Validate range
+    if new_brk < HEAP_BASE || new_brk >= USER_STACK_TOP - 0x10_0000 {
+        serial_println!("[userspace] brk: 0x{:x} out of range", new_brk);
+        return 0;
+    }
+
+    let old_brk = proc.brk;
+    let old_end = (old_brk + 0xFFF) & !0xFFF;
+    let new_end = (new_brk + 0xFFF) & !0xFFF;
+
+    // Map any new pages if heap is growing
+    if new_end > old_end {
+        let user_rw = PageTableFlags::PRESENT
+            | PageTableFlags::WRITABLE
+            | PageTableFlags::USER_ACCESSIBLE;
+
+        let mut addr = old_end;
+        while addr < new_end {
+            let page = Page::containing_address(VirtAddr::new(addr));
+            match crate::memory::map_page_global(page, user_rw) {
+                Some(frame) => {
+                    // Zero the new page
+                    let dest = crate::memory::phys_to_virt(frame.start_address());
+                    unsafe { core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096); }
+                    serial_println!("[userspace] brk: mapped page at {:#x}", addr);
+                }
+                None => {
+                    serial_println!("[userspace] brk: failed to map page at {:#x}", addr);
+                    return 0; // allocation failed
+                }
+            }
+            addr += 4096;
+        }
+    }
+
+    proc.brk = new_brk;
+    new_brk
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn handle_brk(_pid: u32, _new_brk: u64) -> u64 { 0 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  LIBC PAGE LOADING (U5)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Map libc code and data pages into the user address space.
+/// Called by create_process for programs that use the libc.
+#[cfg(target_arch = "x86_64")]
+fn load_libc_pages() -> Result<(), &'static str> {
+    use x86_64::structures::paging::{Page, PageTableFlags};
+    use x86_64::VirtAddr;
+
+    let libc_code = crate::ulibc::generate_libc_code();
+    let libc_data = crate::ulibc::generate_libc_data();
+
+    let user_rx = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
+    let user_rw = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+
+    // Map libc code page at LIBC_BASE (0x50_0000)
+    let code_page = Page::containing_address(VirtAddr::new(crate::ulibc::LIBC_BASE));
+    let frame = crate::memory::map_page_global(code_page, user_rx)
+        .ok_or("failed to map libc code page")?;
+    let dest = crate::memory::phys_to_virt(frame.start_address());
+    unsafe {
+        core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096);
+        core::ptr::copy_nonoverlapping(
+            libc_code.as_ptr(),
+            dest.as_mut_ptr::<u8>(),
+            libc_code.len().min(4096),
+        );
+    }
+    serial_println!("[userspace] libc code loaded at {:#x} ({} bytes)", crate::ulibc::LIBC_BASE, libc_code.len());
+
+    // Map libc data page at LIBC_DATA (0x60_0000)
+    let data_page = Page::containing_address(VirtAddr::new(crate::ulibc::LIBC_DATA));
+    let frame = crate::memory::map_page_global(data_page, user_rw)
+        .ok_or("failed to map libc data page")?;
+    let dest = crate::memory::phys_to_virt(frame.start_address());
+    unsafe {
+        core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096);
+        core::ptr::copy_nonoverlapping(
+            libc_data.as_ptr(),
+            dest.as_mut_ptr::<u8>(),
+            libc_data.len().min(4096),
+        );
+    }
+    serial_println!("[userspace] libc data loaded at {:#x}", crate::ulibc::LIBC_DATA);
+
+    Ok(())
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn load_libc_pages() -> Result<(), &'static str> { Ok(()) }
+
+/// Whether libc pages have been loaded (avoid double-mapping).
+static LIBC_LOADED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// Ensure libc pages are loaded (called once).
+fn ensure_libc_loaded() -> Result<(), &'static str> {
+    if !LIBC_LOADED.load(core::sync::atomic::Ordering::SeqCst) {
+        load_libc_pages()?;
+        LIBC_LOADED.store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+    Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -891,22 +1048,29 @@ pub fn userspace_info() -> String {
         matches!(s, Some(p) if p.state == UserProcessState::Running)
     }).count();
 
+    let libc_loaded = LIBC_LOADED.load(core::sync::atomic::Ordering::SeqCst);
     let mut info = format!(
         "Userspace Process Manager\n\
          Address space layout:\n\
          Text base:   {:#014x}\n\
          Data base:   {:#014x}\n\
          Heap base:   {:#014x}\n\
+         Libc base:   {:#014x}\n\
+         Libc data:   {:#014x}\n\
          Stack top:   {:#014x}\n\
          Stack pages: {}\n\
          Max procs:   {}\n\
          Active:      {}\n\
          Running:     {}\n\
          User CS:     {:#04x}\n\
-         User DS:     {:#04x}\n",
-        TEXT_BASE, DATA_BASE, HEAP_BASE, USER_STACK_TOP,
+         User DS:     {:#04x}\n\
+         Libc:        {}\n",
+        TEXT_BASE, DATA_BASE, HEAP_BASE,
+        crate::ulibc::LIBC_BASE, crate::ulibc::LIBC_DATA,
+        USER_STACK_TOP,
         STACK_PAGES, MAX_PROCESSES, active, running,
         USER_CS, USER_DS,
+        if libc_loaded { "loaded" } else { "not loaded" },
     );
 
     info.push_str("\nBuilt-in programs: ");

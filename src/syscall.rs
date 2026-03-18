@@ -126,6 +126,9 @@ const SYS_IOCTL: u64 = 150;
 const SYS_PIPE: u64 = 151;
 const SYS_DUP2: u64 = 152;
 
+// Libc support (160-169) — U5
+const SYS_PRINTF: u64 = 160;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -496,9 +499,15 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         }
 
         SYS_BRK => {
-            let addr = arg1;
-            serial_println!("[syscall] brk(0x{:x}) — stub, returning current brk", addr);
-            set_retval(0);
+            let new_brk = arg1;
+            if let Some(pid) = crate::userspace::current_process() {
+                let result = crate::userspace::handle_brk(pid, new_brk);
+                serial_println!("[syscall] brk(0x{:x}) = 0x{:x} (pid {})", new_brk, result, pid);
+                set_retval(result as i64);
+            } else {
+                serial_println!("[syscall] brk(0x{:x}) — no user process", new_brk);
+                set_retval(-1);
+            }
         }
 
         SYS_GETPPID => {
@@ -683,6 +692,81 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let newfd = arg2;
             serial_println!("[syscall] dup2({}, {}) — not implemented, returning -1", oldfd, newfd);
             set_retval(-1);
+        }
+
+        // ── Libc support (U5) ────────────────────────────────────────
+
+        SYS_PRINTF => {
+            // printf(fmt_ptr, fmt_len, int_arg)
+            // Supports: %d (decimal), %x (hex), %s (string at int_arg), %%
+            if let Some(fmt) = read_user_str(arg1, arg2) {
+                let int_arg = arg3;
+                let mut output = String::new();
+                let bytes = fmt.as_bytes();
+                let mut i = 0;
+                let mut arg_used = false;
+                while i < bytes.len() {
+                    if bytes[i] == b'%' && i + 1 < bytes.len() {
+                        i += 1;
+                        match bytes[i] {
+                            b'd' => {
+                                use core::fmt::Write;
+                                let val = if arg_used { 0 } else { int_arg };
+                                arg_used = true;
+                                let _ = write!(output, "{}", val as i64);
+                            }
+                            b'u' => {
+                                use core::fmt::Write;
+                                let val = if arg_used { 0 } else { int_arg };
+                                arg_used = true;
+                                let _ = write!(output, "{}", val);
+                            }
+                            b'x' => {
+                                use core::fmt::Write;
+                                let val = if arg_used { 0 } else { int_arg };
+                                arg_used = true;
+                                let _ = write!(output, "{:x}", val);
+                            }
+                            b's' => {
+                                // int_arg is a pointer to null-terminated string
+                                if !arg_used && int_arg != 0 {
+                                    // Read up to 256 bytes from user memory
+                                    let s = unsafe {
+                                        let ptr = int_arg as *const u8;
+                                        let mut len = 0;
+                                        while len < 256 {
+                                            if *ptr.add(len) == 0 { break; }
+                                            len += 1;
+                                        }
+                                        core::str::from_utf8(
+                                            core::slice::from_raw_parts(ptr, len)
+                                        ).unwrap_or("(invalid)")
+                                    };
+                                    output.push_str(s);
+                                    arg_used = true;
+                                } else {
+                                    output.push_str("(null)");
+                                }
+                            }
+                            b'%' => output.push('%'),
+                            other => {
+                                output.push('%');
+                                output.push(other as char);
+                            }
+                        }
+                    } else {
+                        output.push(bytes[i] as char);
+                    }
+                    i += 1;
+                }
+                let len = output.len();
+                serial_println!("[user] {}", output);
+                println!("[user] {}", output);
+                set_retval(len as i64);
+            } else {
+                serial_println!("[syscall] printf: invalid format string");
+                set_retval(-1);
+            }
         }
 
         _ => {

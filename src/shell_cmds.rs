@@ -516,6 +516,9 @@ pub fn dispatch_process(cmd: &str) -> bool {
         "userspace" => {
             print!("{}", crate::userspace::userspace_info());
         }
+        "ulibc" | "libc-info" => {
+            print!("{}", crate::ulibc::info());
+        }
 
         _ => return false,
     }
