@@ -220,8 +220,8 @@ fn parse_elf64(data: &[u8]) -> Result<Elf64Info, &'static str> {
 const HELLO_CODE: &[u8] = &[
     // mov rax, 0 (SYS_WRITE)
     0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
-    // lea rdi, [rip + 0x15] (offset to msg = 21 bytes ahead)
-    0x48, 0x8D, 0x3D, 0x15, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x17] (offset to msg: RIP=14, msg=37, 37-14=23=0x17)
+    0x48, 0x8D, 0x3D, 0x17, 0x00, 0x00, 0x00,
     // mov rsi, 31 (msg_len)
     0x48, 0xC7, 0xC6, 0x1F, 0x00, 0x00, 0x00,
     // int 0x80
@@ -236,6 +236,58 @@ const HELLO_CODE: &[u8] = &[
     0xEB, 0xFE,
     // "Hello from MerlionOS userspace!\n"
     b'H', b'e', b'l', b'l', b'o', b' ', b'f', b'r', b'o', b'm', b' ',
+    b'M', b'e', b'r', b'l', b'i', b'o', b'n', b'O', b'S', b' ',
+    b'u', b's', b'e', b'r', b's', b'p', b'a', b'c', b'e', b'!', b'\n',
+];
+
+/// cat-test program: writes "File syscalls ready!\n" then exits.
+/// Same structure as hello — SYS_WRITE + SYS_EXIT.
+#[rustfmt::skip]
+const CAT_TEST_CODE: &[u8] = &[
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x17] (offset to msg: RIP=14, msg=37, 37-14=23=0x17)
+    0x48, 0x8D, 0x3D, 0x17, 0x00, 0x00, 0x00,
+    // mov rsi, 21 (msg_len = "File syscalls ready!\n")
+    0x48, 0xC7, 0xC6, 0x15, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 1 (SYS_EXIT)
+    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+    // xor rdi, rdi
+    0x48, 0x31, 0xFF,
+    // int 0x80
+    0xCD, 0x80,
+    // jmp $ (infinite loop safety)
+    0xEB, 0xFE,
+    // "File syscalls ready!\n"
+    b'F', b'i', b'l', b'e', b' ', b's', b'y', b's', b'c', b'a', b'l', b'l',
+    b's', b' ', b'r', b'e', b'a', b'd', b'y', b'!', b'\n',
+];
+
+/// qfc-test program: writes "QFC miner running in MerlionOS userspace!\n" then exits.
+#[rustfmt::skip]
+const QFC_TEST_CODE: &[u8] = &[
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x17] (offset to msg: RIP=14, msg=37, 37-14=23=0x17)
+    0x48, 0x8D, 0x3D, 0x17, 0x00, 0x00, 0x00,
+    // mov rsi, 42 (msg_len = "QFC miner running in MerlionOS userspace!\n")
+    0x48, 0xC7, 0xC6, 0x2A, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 1 (SYS_EXIT)
+    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+    // xor rdi, rdi
+    0x48, 0x31, 0xFF,
+    // int 0x80
+    0xCD, 0x80,
+    // jmp $ (infinite loop safety)
+    0xEB, 0xFE,
+    // "QFC miner running in MerlionOS userspace!\n"
+    b'Q', b'F', b'C', b' ', b'm', b'i', b'n', b'e', b'r', b' ',
+    b'r', b'u', b'n', b'n', b'i', b'n', b'g', b' ',
+    b'i', b'n', b' ',
     b'M', b'e', b'r', b'l', b'i', b'o', b'n', b'O', b'S', b' ',
     b'u', b's', b'e', b'r', b's', b'p', b'a', b'c', b'e', b'!', b'\n',
 ];
@@ -356,6 +408,8 @@ fn build_elf64(code: &[u8]) -> Vec<u8> {
 pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
     let code: &[u8] = match name {
         "hello" => HELLO_CODE,
+        "cat-test" => CAT_TEST_CODE,
+        "qfc-test" => QFC_TEST_CODE,
         "counter" => COUNTER_CODE,
         "getpid" => GETPID_CODE,
         _ => return None,
@@ -365,7 +419,7 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
 
 /// List available built-in program names.
 pub fn list_builtin_programs() -> &'static [&'static str] {
-    &["hello", "counter", "getpid"]
+    &["hello", "cat-test", "qfc-test", "counter", "getpid"]
 }
 
 // ═══════════════════════════════════════════════════════════════════
