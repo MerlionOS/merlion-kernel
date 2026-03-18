@@ -384,25 +384,21 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     // Allocate PID
     let pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
 
-    // For now, map user pages in the KERNEL page table (no CR3 switch).
-    // This is less isolated but lets us debug the basic Ring 3 mechanism.
-    // TODO: switch to per-process page tables once Ring 3 iretq works.
-    let (_pml4_frame, _user_mapper) =
-        crate::memory::create_user_page_table().ok_or("failed to create user page table")?;
+    serial_println!("[userspace] create_process: mapping user pages in kernel page table");
 
+    // Map user pages directly in kernel page table (no separate address space).
+    // This has no isolation but lets us debug Ring 3 execution first.
     let user_flags =
         PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
     let user_rw_flags =
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
 
-    // Get kernel page table mapper for mapping user pages
-    let phys_offset = crate::memory::phys_mem_offset();
-    let l4_table = unsafe { crate::memory::active_level_4_table(phys_offset) };
-    let mut mapper = unsafe { x86_64::structures::paging::OffsetPageTable::new(l4_table, phys_offset) };
-
     // Map PT_LOAD segments
+    serial_println!("[userspace] ELF entry={:#x} segments={}", elf.entry, elf.segments.len());
     let mut max_addr: u64 = HEAP_BASE;
-    for seg in &elf.segments {
+    for (si, seg) in elf.segments.iter().enumerate() {
+        serial_println!("[userspace] seg[{}] type={} vaddr={:#x} memsz={} filesz={} flags={}",
+            si, seg.p_type, seg.p_vaddr, seg.p_memsz, seg.p_filesz, seg.p_flags);
         if seg.p_type != PT_LOAD {
             continue;
         }
@@ -421,8 +417,10 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
         let mut page_addr = start_page;
         while page_addr < end {
             let page = Page::containing_address(VirtAddr::new(page_addr));
-            let frame = crate::memory::map_page(&mut mapper, page, flags)
+            serial_println!("[userspace] mapping page at {:#x}", page_addr);
+            let frame = crate::memory::map_page_global(page, flags)
                 .ok_or("failed to map ELF segment page")?;
+            serial_println!("[userspace] mapped -> frame {:#x}", frame.start_address().as_u64());
 
             // Copy file data into the page
             let page_start = page_addr;
@@ -469,13 +467,13 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
         let stack_page = Page::containing_address(
             VirtAddr::new(USER_STACK_TOP - (i + 1) * 4096),
         );
-        let _frame = crate::memory::map_page(&mut mapper, stack_page, user_rw_flags)
+        let _frame = crate::memory::map_page_global(stack_page, user_rw_flags)
             .ok_or("failed to map stack page")?;
     }
 
     // Create process descriptor
     let mut proc = UserProcess::new(pid, name);
-    proc.page_table_phys = _pml4_frame.start_address().as_u64();
+    proc.page_table_phys = 0; // using kernel page table for now
     proc.entry_point = elf.entry;
     proc.user_stack_top = USER_STACK_TOP;
     proc.brk = max_addr;
@@ -516,12 +514,7 @@ pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
 
     serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x}", pid, entry, stack);
 
-    // Send EOI + enable interrupts (we're called from interrupt context via shell)
-    unsafe {
-        crate::interrupts::end_of_interrupt(1);
-    }
-    x86_64::instructions::interrupts::enable();
-
+    // EOI + interrupts already handled by shell_cmds before calling us
     unsafe {
         do_iretq(entry, stack, 0);
     }
@@ -628,8 +621,11 @@ pub fn exit_process(pid: u32, code: i32) {
 
 /// Run a built-in user program by name: creates the process and enters userspace.
 pub fn run_builtin(name: &str) -> Result<(), &'static str> {
+    serial_println!("[userspace] run_builtin: looking up '{}'", name);
     let elf_data = get_builtin_program(name).ok_or("unknown built-in program")?;
+    serial_println!("[userspace] run_builtin: got ELF data ({} bytes)", elf_data.len());
     let pid = create_process(name, &elf_data)?;
+    serial_println!("[userspace] run_builtin: process created, entering userspace pid={}", pid);
     enter_userspace(pid)
 }
 

@@ -488,6 +488,9 @@ pub fn dispatch_process(cmd: &str) -> bool {
         // --- Userspace process commands ---
         cmd if cmd.starts_with("run-user ") => {
             let name = cmd[9..].trim();
+            // Exit interrupt context first — page mapping needs frame allocator lock
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            x86_64::instructions::interrupts::enable();
             match crate::userspace::run_builtin(name) {
                 Ok(()) => println!("User program '{}' finished.", name),
                 Err(e) => println!("Error: {}", e),

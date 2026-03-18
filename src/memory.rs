@@ -80,17 +80,59 @@ pub fn map_page_global(
     flags: PageTableFlags,
 ) -> Option<PhysFrame> {
     let frame = alloc_frame()?;
+    let extra1 = alloc_frame();
+    let extra2 = alloc_frame();
+    let extra3 = alloc_frame();
+
     let offset = phys_mem_offset();
     let level_4_table = unsafe { active_level_4_table(offset) };
     let mut mapper = unsafe { OffsetPageTable::new(level_4_table, offset) };
 
+    let mut pre_alloc = PreAllocatedFrames {
+        frames: [extra1, extra2, extra3],
+        next: 0,
+    };
+
     unsafe {
-        mapper
-            .map_to(page, frame, flags, &mut GlobalFrameAllocWrapper)
-            .ok()?
-            .flush();
+        match mapper.map_to(page, frame, flags, &mut pre_alloc) {
+            Ok(flusher) => {
+                flusher.flush();
+            }
+            Err(x86_64::structures::paging::mapper::MapToError::PageAlreadyMapped(_)) => {
+                // Page already mapped by bootloader — unmap and remap with our flags
+                if let Ok((existing_frame, flusher)) = mapper.unmap(page) {
+                    flusher.flush();
+                    // Remap the EXISTING frame (not our new one) with user-accessible flags
+                    mapper.map_to(page, existing_frame, flags, &mut pre_alloc).ok()?.flush();
+                    return Some(existing_frame);
+                }
+                return None;
+            }
+            Err(_) => {
+                return None;
+            }
+        }
     }
     Some(frame)
+}
+
+/// A frame allocator that uses pre-allocated frames (avoids deadlock).
+struct PreAllocatedFrames {
+    frames: [Option<PhysFrame>; 3],
+    next: usize,
+}
+
+unsafe impl FrameAllocator<Size4KiB> for PreAllocatedFrames {
+    fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
+        while self.next < 3 {
+            let idx = self.next;
+            self.next += 1;
+            if let Some(f) = self.frames[idx] {
+                return Some(f);
+            }
+        }
+        None
+    }
 }
 
 /// Create a new page table for a user process by cloning kernel mappings.
