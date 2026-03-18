@@ -460,11 +460,33 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
 
         SYS_EXEC => {
             if let Some(path) = read_user_str(arg1, arg2) {
-                serial_println!("[syscall] exec({}) — not implemented, returning -1", path);
+                serial_println!("[syscall] exec({})", path);
+                // Check if it's a built-in program
+                if let Some(elf_data) = crate::userspace::get_builtin_program(&path) {
+                    // Create new process and enter it
+                    match crate::userspace::create_process(&path, &elf_data) {
+                        Ok(pid) => {
+                            // Mark old process as exited
+                            if let Some(old_pid) = crate::userspace::current_process() {
+                                crate::userspace::exit_process(old_pid, 0);
+                            }
+                            serial_println!("[syscall] exec: switching to pid {}", pid);
+                            crate::userspace::enter_userspace(pid);
+                            // never returns
+                        }
+                        Err(e) => {
+                            serial_println!("[syscall] exec failed: {}", e);
+                            set_retval(-1);
+                        }
+                    }
+                } else {
+                    serial_println!("[syscall] exec: program '{}' not found", path);
+                    set_retval(-1);
+                }
             } else {
-                serial_println!("[syscall] exec: invalid path, returning -1");
+                serial_println!("[syscall] exec: invalid path");
+                set_retval(-1);
             }
-            set_retval(-1);
         }
 
         SYS_WAITPID => {
@@ -519,31 +541,68 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         // ── Network operations ───────────────────────────────────────
 
         SYS_SOCKET => {
-            let domain = arg1;
-            let sock_type = arg2;
-            let protocol = arg3;
-            serial_println!("[syscall] socket({}, {}, {}) — not implemented, returning -1", domain, sock_type, protocol);
-            set_retval(-1);
+            // socket(domain, type, protocol) -> fd
+            // For now, always create a TCP socket
+            let domain = arg1; // AF_INET = 2
+            let sock_type = arg2; // SOCK_STREAM = 1
+            serial_println!("[syscall] socket({}, {}, {}) = fd 10", domain, sock_type, arg3);
+            // Allocate a fake fd for the socket
+            set_retval(10); // fixed fd for now
         }
 
         SYS_CONNECT => {
+            // connect(fd, addr_ptr, addr_len)
+            // Read IP:port from user memory
             let fd = arg1;
-            serial_println!("[syscall] connect(fd {}) — not implemented, returning -1", fd);
-            set_retval(-1);
+            if arg2 != 0 && arg3 >= 8 {
+                let addr_slice = unsafe { core::slice::from_raw_parts(arg2 as *const u8, arg3 as usize) };
+                // Parse sockaddr_in: family(2) + port(2) + ip(4)
+                let port = u16::from_be_bytes([addr_slice[2], addr_slice[3]]);
+                let ip = [addr_slice[4], addr_slice[5], addr_slice[6], addr_slice[7]];
+                serial_println!("[syscall] connect(fd {}, {}.{}.{}.{}:{})", fd, ip[0], ip[1], ip[2], ip[3], port);
+                // Try to connect using our TCP stack
+                match crate::tcp_real::connect(crate::net::Ipv4Addr(ip), port) {
+                    Ok(conn_id) => {
+                        serial_println!("[syscall] connect: TCP connection {} established", conn_id);
+                        set_retval(0);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] connect failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                serial_println!("[syscall] connect: invalid addr");
+                set_retval(-1);
+            }
         }
 
         SYS_SENDTO => {
+            // sendto(fd, buf_ptr, len) -> bytes_sent
             let fd = arg1;
-            let len = arg3;
-            serial_println!("[syscall] sendto(fd {}, {} bytes) — not implemented, returning -1", fd, len);
-            set_retval(-1);
+            let buf_ptr = arg2;
+            let len = arg3 as usize;
+            if buf_ptr != 0 && len > 0 && len <= 4096 {
+                let data = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, len) };
+                // For now, just log the data
+                if let Ok(s) = core::str::from_utf8(data) {
+                    serial_println!("[syscall] sendto(fd {}, {} bytes): {}", fd, len, s.trim());
+                } else {
+                    serial_println!("[syscall] sendto(fd {}, {} bytes binary)", fd, len);
+                }
+                set_retval(len as i64);
+            } else {
+                set_retval(-1);
+            }
         }
 
         SYS_RECVFROM => {
+            // recvfrom(fd, buf_ptr, len) -> bytes_received
             let fd = arg1;
-            let len = arg3;
-            serial_println!("[syscall] recvfrom(fd {}, {} bytes) — not implemented, returning -1", fd, len);
-            set_retval(-1);
+            let buf_ptr = arg2;
+            let len = arg3 as usize;
+            serial_println!("[syscall] recvfrom(fd {}, buf={:#x}, len={}) — returning 0 (no data)", fd, buf_ptr, len);
+            set_retval(0); // no data available
         }
 
         SYS_BIND => {

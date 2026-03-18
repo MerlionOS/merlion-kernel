@@ -454,6 +454,76 @@ const OPEN_TEST_CODE: &[u8] = &[
     b'0', b'\n',
 ];
 
+/// exec-test program: writes "exec-test: running exec hello\n", then calls SYS_EXEC("hello"),
+/// if exec fails writes "exec failed!\n" and exits.
+///
+/// Layout:
+///   Offset  0: mov rax, 0           = 7 bytes  [0-6]
+///   Offset  7: lea rdi, [rip+0x45]  = 7 bytes  [7-13]    RIP=14, msg1=83, 83-14=69=0x45
+///   Offset 14: mov rsi, 31          = 7 bytes  [14-20]
+///   Offset 21: int 0x80             = 2 bytes  [21-22]
+///   Offset 23: mov rax, 111         = 7 bytes  [23-29]
+///   Offset 30: lea rdi, [rip+0x4D]  = 7 bytes  [30-36]   RIP=37, prog=114, 114-37=77=0x4D
+///   Offset 37: mov rsi, 5           = 7 bytes  [37-43]
+///   Offset 44: int 0x80             = 2 bytes  [44-45]
+///   Offset 46: mov rax, 0           = 7 bytes  [46-52]
+///   Offset 53: lea rdi, [rip+0x3B]  = 7 bytes  [53-59]   RIP=60, msg2=119, 119-60=59=0x3B
+///   Offset 60: mov rsi, 13          = 7 bytes  [60-66]
+///   Offset 67: int 0x80             = 2 bytes  [67-68]
+///   Offset 69: mov rax, 1           = 7 bytes  [69-75]
+///   Offset 76: xor rdi, rdi         = 3 bytes  [76-78]
+///   Offset 79: int 0x80             = 2 bytes  [79-80]
+///   Offset 81: jmp $                = 2 bytes  [81-82]
+///   Offset 83: msg1 (31 bytes)      [83-113]  "exec-test: running exec hello\n"
+///   Offset114: prog_name (5 bytes)  [114-118] "hello"
+///   Offset119: msg2 (13 bytes)      [119-131] "exec failed!\n"
+#[rustfmt::skip]
+const EXEC_TEST_CODE: &[u8] = &[
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x45] (offset to msg1)
+    0x48, 0x8D, 0x3D, 0x45, 0x00, 0x00, 0x00,
+    // mov rsi, 30 (msg1 len: "exec-test: running exec hello\n")
+    0x48, 0xC7, 0xC6, 0x1E, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 111 (SYS_EXEC)
+    0x48, 0xC7, 0xC0, 0x6F, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x4D] (offset to prog_name)
+    0x48, 0x8D, 0x3D, 0x4D, 0x00, 0x00, 0x00,
+    // mov rsi, 5 (len of "hello")
+    0x48, 0xC7, 0xC6, 0x05, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // If exec returns (failure), write error msg
+    // mov rax, 0 (SYS_WRITE)
+    0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,
+    // lea rdi, [rip + 0x3B] (offset to msg2)
+    0x48, 0x8D, 0x3D, 0x3B, 0x00, 0x00, 0x00,
+    // mov rsi, 13 (msg2 len)
+    0x48, 0xC7, 0xC6, 0x0D, 0x00, 0x00, 0x00,
+    // int 0x80
+    0xCD, 0x80,
+    // mov rax, 1 (SYS_EXIT)
+    0x48, 0xC7, 0xC0, 0x01, 0x00, 0x00, 0x00,
+    // xor rdi, rdi
+    0x48, 0x31, 0xFF,
+    // int 0x80
+    0xCD, 0x80,
+    // jmp $ (infinite loop safety)
+    0xEB, 0xFE,
+    // msg1: "exec-test: running exec hello\n" (31 bytes, offset 83)
+    b'e', b'x', b'e', b'c', b'-', b't', b'e', b's', b't', b':', b' ',
+    b'r', b'u', b'n', b'n', b'i', b'n', b'g', b' ',
+    b'e', b'x', b'e', b'c', b' ',
+    b'h', b'e', b'l', b'l', b'o', b'\n',
+    0x00,  // pad to 31 bytes
+    // prog_name: "hello" (5 bytes, offset 114)
+    b'h', b'e', b'l', b'l', b'o',
+    // msg2: "exec failed!\n" (13 bytes, offset 119)
+    b'e', b'x', b'e', b'c', b' ', b'f', b'a', b'i', b'l', b'e', b'd', b'!', b'\n',
+];
+
 /// Build a minimal valid ELF64 executable wrapping raw machine code.
 fn build_elf64(code: &[u8]) -> Vec<u8> {
     let ehdr_size: u64 = 64;
@@ -514,6 +584,7 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "getpid" => GETPID_CODE,
         "syscall-test" => SYSCALL_TEST_CODE,
         "open-test" => OPEN_TEST_CODE,
+        "exec-test" => EXEC_TEST_CODE,
         _ => return None,
     };
     Some(build_elf64(code))
@@ -521,7 +592,7 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
 
 /// List available built-in program names.
 pub fn list_builtin_programs() -> &'static [&'static str] {
-    &["hello", "cat-test", "qfc-test", "counter", "getpid", "syscall-test", "open-test"]
+    &["hello", "cat-test", "qfc-test", "counter", "getpid", "syscall-test", "open-test", "exec-test"]
 }
 
 // ═══════════════════════════════════════════════════════════════════
