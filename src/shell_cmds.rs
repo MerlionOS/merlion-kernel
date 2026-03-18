@@ -525,6 +525,9 @@ pub fn dispatch_process(cmd: &str) -> bool {
         "dllist" => {
             print!("{}", crate::dynlink::list_libraries());
         }
+        "cow" | "cow-info" => {
+            print!("{}", crate::cow::info());
+        }
 
         _ => return false,
     }

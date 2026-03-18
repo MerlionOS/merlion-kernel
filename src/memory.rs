@@ -117,9 +117,9 @@ pub fn map_page_global(
 }
 
 /// A frame allocator that uses pre-allocated frames (avoids deadlock).
-struct PreAllocatedFrames {
-    frames: [Option<PhysFrame>; 3],
-    next: usize,
+pub struct PreAllocatedFrames {
+    pub frames: [Option<PhysFrame>; 3],
+    pub next: usize,
 }
 
 unsafe impl FrameAllocator<Size4KiB> for PreAllocatedFrames {

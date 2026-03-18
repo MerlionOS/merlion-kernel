@@ -55,6 +55,7 @@ pub mod compress;
 pub mod cluster;
 pub mod container;
 pub mod coreutils;
+pub mod cow;
 pub mod cron;
 pub mod crypto;
 pub mod crypto_ext;

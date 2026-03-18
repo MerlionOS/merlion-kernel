@@ -912,7 +912,227 @@ pub fn info() -> alloc::string::String {
          \x20          malloc, free, open, read, close, getpid, brk,\n\
          \x20          sleep, socket, connect, sendto, recvfrom,\n\
          \x20          gettime, itoa, printf, puts, print_int)\n\
-         Programs:  malloc-test, printf-test, string-test, libc-demo\n",
+         Programs:  malloc-test, printf-test, string-test, libc-demo,\n\
+         \x20          cat, echo, wc, ls\n",
         LIBC_BASE, LIBC_SIZE, LIBC_DATA, HEAP_BASE,
     )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STANDARD USER PROGRAMS
+// ═══════════════════════════════════════════════════════════════════
+
+/// Generate "cat" program: reads /proc/version and prints it.
+pub fn gen_cat() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // puts("cat: reading /proc/version\n")
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // fd = open("/proc/version", 13, 0)
+    let path_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // path
+    let path_len_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0); // len
+    emit_mov_rdx_imm64(&mut c, 0); // flags
+    emit_call_libc(&mut c, FN_OPEN);
+    // save fd in r12
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax
+
+    // buf = malloc(256)
+    emit_mov_rdi_imm64(&mut c, 256);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (buf)
+
+    // n = read(fd, buf, 256)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12 (fd)
+    c.extend_from_slice(&[0x4C, 0x89, 0xEE]); // mov rsi, r13 (buf)
+    emit_mov_rdx_imm64(&mut c, 256);
+    emit_call_libc(&mut c, FN_READ);
+    c.extend_from_slice(&[0x49, 0x89, 0xC6]); // mov r14, rax (n)
+
+    // write(buf, n) — print file contents
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13 (buf)
+    c.extend_from_slice(&[0x4C, 0x89, 0xF6]); // mov rsi, r14 (n)
+    emit_call_libc(&mut c, FN_WRITE);
+
+    // close(fd)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_CLOSE);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"cat: /proc/version\n\0");
+
+    let path_addr = text_base + c.len() as u64;
+    let path = b"/proc/version";
+    let path_len = path.len() as u64;
+    c.extend_from_slice(path);
+    c.push(0);
+
+    // Patch
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[path_fixup..path_fixup+8].copy_from_slice(&path_addr.to_le_bytes());
+    c[path_len_fixup..path_len_fixup+8].copy_from_slice(&path_len.to_le_bytes());
+
+    c
+}
+
+/// Generate "echo" program: prints a message to stdout.
+pub fn gen_echo() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // puts(msg)
+    let msg_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let msg_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"Hello from MerlionOS userspace echo!\n\0");
+
+    c[msg_fixup..msg_fixup+8].copy_from_slice(&msg_addr.to_le_bytes());
+    c
+}
+
+/// Generate "wc" program: counts characters in /proc/version.
+pub fn gen_wc() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // fd = open("/proc/version", 13, 0)
+    let path_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    let path_len_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_mov_rdx_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_OPEN);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (fd)
+
+    // buf = malloc(512)
+    emit_mov_rdi_imm64(&mut c, 512);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (buf)
+
+    // n = read(fd, buf, 512)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    c.extend_from_slice(&[0x4C, 0x89, 0xEE]); // mov rsi, r13
+    emit_mov_rdx_imm64(&mut c, 512);
+    emit_call_libc(&mut c, FN_READ);
+    c.extend_from_slice(&[0x49, 0x89, 0xC6]); // mov r14, rax (n = bytes read)
+
+    // close(fd)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_CLOSE);
+
+    // print "  <n> /proc/version\n"
+    let msg_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xF7]); // mov rdi, r14 (n)
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let path_addr = text_base + c.len() as u64;
+    let path = b"/proc/version";
+    let path_len = path.len() as u64;
+    c.extend_from_slice(path);
+    c.push(0);
+
+    let msg_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"  \0");
+
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b" /proc/version\n\0");
+
+    c[path_fixup..path_fixup+8].copy_from_slice(&path_addr.to_le_bytes());
+    c[path_len_fixup..path_len_fixup+8].copy_from_slice(&path_len.to_le_bytes());
+    c[msg_fixup..msg_fixup+8].copy_from_slice(&msg_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+
+    c
+}
+
+/// Generate "ls" program: lists files in root directory.
+pub fn gen_ls() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // puts("ls /\n")
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // buf = malloc(1024)
+    emit_mov_rdi_imm64(&mut c, 1024);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (buf)
+
+    // readdir("/", 1, buf, 1024) via SYS_READDIR (107)
+    let dir_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // path "/"
+    emit_mov_rsi_imm64(&mut c, 1); // path_len
+    c.extend_from_slice(&[0x4C, 0x89, 0xE2]); // mov rdx, r12 (buf) — but readdir uses arg3 for buf
+    // Actually readdir ABI: rdi=path_ptr, rsi=path_len, rdx is not used for buf in current implementation
+    // Let me check... SYS_READDIR takes (path_ptr, path_len, buf_ptr, buf_len) but we only have 3 args
+    // The current syscall only passes 3 args via rdi/rsi/rdx, and arg3 is the buf_ptr
+    // So: mov rdi=path_ptr, mov rsi=path_len, mov rdx=buf_ptr
+    // We need rcx for buf_len but our ABI only has 3 args
+    // Let me use the raw syscall approach instead
+    // Actually looking at SYS_READDIR handler in syscall.rs, it reads 4 args:
+    // arg1=path_ptr, arg2=path_len, arg3=buf_ptr... but arg3 is rdx.
+    // The handler uses arg3 as buf_ptr. buf_len is hardcoded as 4096.
+    // So we need: rdi=path_ptr, rsi=path_len, rdx=buf_ptr
+    // Use raw syscall: mov rax, 107; int 0x80
+    c.extend_from_slice(&[0x48, 0xC7, 0xC0, 0x6B, 0x00, 0x00, 0x00]); // mov rax, 107
+    c.extend_from_slice(&[0xCD, 0x80]); // int 0x80
+    // rax = number of entries
+
+    // Write the buffer contents (readdir fills it with newline-separated names)
+    // We need to know how many bytes were written to buf.
+    // readdir returns entry count, but writes formatted entries to buf.
+    // Use strlen on buf to get actual length
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12 (buf)
+    emit_call_libc(&mut c, FN_STRLEN);
+    emit_mov_rsi_rax(&mut c); // rsi = length
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12 (buf)
+    emit_call_libc(&mut c, FN_WRITE);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"ls /\n\0");
+
+    let dir_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"/\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[dir_fixup..dir_fixup+8].copy_from_slice(&dir_addr.to_le_bytes());
+
+    c
 }

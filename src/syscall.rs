@@ -134,6 +134,10 @@ const SYS_DLOPEN: u64 = 170;
 const SYS_DLSYM: u64 = 171;
 const SYS_DLCLOSE: u64 = 172;
 
+// Signal handling (180-184)
+const SYS_SIGACTION: u64 = 180;
+const SYS_SIGRETURN: u64 = 181;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -568,10 +572,11 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         }
 
         SYS_KILL => {
-            let target_pid = arg1;
-            let signal = arg2;
-            serial_println!("[syscall] kill(pid {}, sig {}) — stub", target_pid, signal);
-            set_retval(-1);
+            let target_pid = arg1 as usize;
+            let signal = arg2 as u8;
+            let _ = crate::sighandler::deliver_signal(target_pid, signal);
+            serial_println!("[syscall] kill(pid {}, sig {})", target_pid, signal);
+            set_retval(0);
         }
 
         // ── Memory operations ────────────────────────────────────────
@@ -734,15 +739,50 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         }
 
         SYS_PIPE => {
-            serial_println!("[syscall] pipe() — not implemented, returning -1");
-            set_retval(-1);
+            // pipe(fds_ptr) — creates pipe, writes [read_fd, write_fd] to user memory
+            let fds_ptr = arg1;
+            if fds_ptr == 0 {
+                serial_println!("[syscall] pipe: null pointer");
+                set_retval(-1);
+            } else {
+                match crate::pipefs::create_pipe() {
+                    Ok((read_fd, write_fd)) => {
+                        // Write [read_fd, write_fd] as two u64 values to user memory
+                        let data: [u64; 2] = [read_fd as u64, write_fd as u64];
+                        let bytes = unsafe {
+                            core::slice::from_raw_parts(data.as_ptr() as *const u8, 16)
+                        };
+                        unsafe { write_user_buf(fds_ptr, bytes, 16) };
+                        serial_println!("[syscall] pipe() = [{}, {}]", read_fd, write_fd);
+                        set_retval(0);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] pipe() failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            }
         }
 
         SYS_DUP2 => {
-            let oldfd = arg1;
-            let newfd = arg2;
-            serial_println!("[syscall] dup2({}, {}) — not implemented, returning -1", oldfd, newfd);
-            set_retval(-1);
+            // dup2(oldfd, newfd) → newfd
+            let oldfd = arg1 as usize;
+            let newfd = arg2 as usize;
+            if let Some(pid) = crate::userspace::current_process() {
+                match crate::userspace::proc_dup2(pid, oldfd, newfd) {
+                    Ok(fd) => {
+                        serial_println!("[syscall] dup2({}, {}) = {}", oldfd, newfd, fd);
+                        set_retval(fd as i64);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] dup2({}, {}) failed: {}", oldfd, newfd, e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                serial_println!("[syscall] dup2: no user process");
+                set_retval(-1);
+            }
         }
 
         // ── Libc support (U5) ────────────────────────────────────────
@@ -818,6 +858,38 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 serial_println!("[syscall] printf: invalid format string");
                 set_retval(-1);
             }
+        }
+
+        // ── Signal handling ────────────────────────────────────────
+
+        SYS_SIGACTION => {
+            // sigaction(signal, handler_type) → 0
+            // handler_type: 0=default, 1=ignore, 2+=custom handler addr (future)
+            let sig = arg1 as u8;
+            let handler_type = arg2;
+            let handler = match handler_type {
+                0 => crate::sighandler::HandlerType::Default,
+                1 => crate::sighandler::HandlerType::Ignore,
+                _ => {
+                    serial_println!("[syscall] sigaction: custom handlers not yet supported from userspace");
+                    crate::sighandler::HandlerType::Default
+                }
+            };
+            match crate::sighandler::register_handler(pid as usize, sig, handler) {
+                Ok(()) => {
+                    serial_println!("[syscall] sigaction(sig {}, type {}) ok", sig, handler_type);
+                    set_retval(0);
+                }
+                Err(e) => {
+                    serial_println!("[syscall] sigaction failed: {}", e);
+                    set_retval(-1);
+                }
+            }
+        }
+
+        SYS_SIGRETURN => {
+            serial_println!("[syscall] sigreturn — returning from signal handler");
+            set_retval(0);
         }
 
         // ── Dynamic linking (U6) ───────────────────────────────────

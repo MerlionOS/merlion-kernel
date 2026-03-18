@@ -588,6 +588,32 @@ fn build_elf64(code: &[u8]) -> Vec<u8> {
     elf
 }
 
+/// Try to load an ELF program from the VFS filesystem.
+/// Looks for the program at /bin/<name> or /<name>.
+fn load_program_from_vfs(name: &str) -> Option<Vec<u8>> {
+    // Try /bin/<name> first, then /<name>
+    let paths = [
+        format!("/bin/{}", name),
+        format!("/{}", name),
+    ];
+    for path in &paths {
+        if let Ok(content) = crate::vfs::cat(path) {
+            let bytes = content.as_bytes();
+            // Check ELF magic
+            if bytes.len() >= 4 && bytes[0..4] == [0x7F, b'E', b'L', b'F'] {
+                serial_println!("[userspace] loaded ELF from VFS: {} ({} bytes)", path, bytes.len());
+                return Some(bytes.to_vec());
+            }
+            // Not ELF — treat as raw machine code, wrap in ELF
+            if !bytes.is_empty() {
+                serial_println!("[userspace] loaded raw program from VFS: {} ({} bytes)", path, bytes.len());
+                return Some(build_elf64(bytes));
+            }
+        }
+    }
+    None
+}
+
 /// Look up a built-in user program by name, returning an ELF binary.
 pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
     // U1-U4 programs (raw machine code)
@@ -606,17 +632,26 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         return Some(build_elf64(c));
     }
 
-    // U5 programs (libc-based, generated at runtime)
+    // U5+ programs (libc-based, generated at runtime)
     let gen_code = match name {
-        "malloc-test" => Some(crate::ulibc::gen_malloc_test()),
-        "printf-test" => Some(crate::ulibc::gen_printf_test()),
-        "string-test" => Some(crate::ulibc::gen_string_test()),
-        "libc-demo"   => Some(crate::ulibc::gen_libc_demo()),
-        // U6 dynamic linking
+        "malloc-test"  => Some(crate::ulibc::gen_malloc_test()),
+        "printf-test"  => Some(crate::ulibc::gen_printf_test()),
+        "string-test"  => Some(crate::ulibc::gen_string_test()),
+        "libc-demo"    => Some(crate::ulibc::gen_libc_demo()),
         "dynlink-test" => Some(crate::dynlink::gen_dynlink_test()),
+        // Standard user programs
+        "cat"   => Some(crate::ulibc::gen_cat()),
+        "echo"  => Some(crate::ulibc::gen_echo()),
+        "wc"    => Some(crate::ulibc::gen_wc()),
+        "ls"    => Some(crate::ulibc::gen_ls()),
         _ => None,
     };
-    gen_code.map(|c| build_elf64(&c))
+    if let Some(c) = gen_code {
+        return Some(build_elf64(&c));
+    }
+
+    // Try loading from VFS
+    load_program_from_vfs(name)
 }
 
 /// List available built-in program names.
@@ -628,6 +663,8 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         "malloc-test", "printf-test", "string-test", "libc-demo",
         // U6 dynamic linking
         "dynlink-test",
+        // Standard user programs
+        "cat", "echo", "wc", "ls",
     ]
 }
 
@@ -747,7 +784,7 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     table.slots[slot] = Some(proc);
 
     // Load libc pages for U5 programs
-    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test");
+    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" | "cat" | "echo" | "wc" | "ls");
     if is_libc_program {
         ensure_libc_loaded()?;
     }
@@ -932,6 +969,21 @@ pub fn proc_close(pid: u32, fd: usize) -> Result<(), &'static str> {
     }
     proc.fd_table[fd] = None;
     Ok(())
+}
+
+/// Duplicate a file descriptor (dup2).
+pub fn proc_dup2(pid: u32, oldfd: usize, newfd: usize) -> Result<usize, &'static str> {
+    let mut table = PROCESS_TABLE.lock();
+    let slot = table.find_by_pid(pid).ok_or("no such process")?;
+    let proc = table.slots[slot].as_mut().unwrap();
+
+    if oldfd >= MAX_PROC_FDS || newfd >= MAX_PROC_FDS {
+        return Err("invalid fd");
+    }
+    let entry = proc.fd_table[oldfd].as_ref().ok_or("oldfd not open")?.clone();
+    // Close newfd if open
+    proc.fd_table[newfd] = Some(entry);
+    Ok(newfd)
 }
 
 // ═══════════════════════════════════════════════════════════════════
