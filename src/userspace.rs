@@ -384,14 +384,21 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     // Allocate PID
     let pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
 
-    // Create user page table (clones kernel upper half)
-    let (pml4_frame, mut mapper) =
+    // For now, map user pages in the KERNEL page table (no CR3 switch).
+    // This is less isolated but lets us debug the basic Ring 3 mechanism.
+    // TODO: switch to per-process page tables once Ring 3 iretq works.
+    let (_pml4_frame, _user_mapper) =
         crate::memory::create_user_page_table().ok_or("failed to create user page table")?;
 
     let user_flags =
         PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
     let user_rw_flags =
         PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+
+    // Get kernel page table mapper for mapping user pages
+    let phys_offset = crate::memory::phys_mem_offset();
+    let l4_table = unsafe { crate::memory::active_level_4_table(phys_offset) };
+    let mut mapper = unsafe { x86_64::structures::paging::OffsetPageTable::new(l4_table, phys_offset) };
 
     // Map PT_LOAD segments
     let mut max_addr: u64 = HEAP_BASE;
@@ -468,7 +475,7 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
 
     // Create process descriptor
     let mut proc = UserProcess::new(pid, name);
-    proc.page_table_phys = pml4_frame.start_address().as_u64();
+    proc.page_table_phys = _pml4_frame.start_address().as_u64();
     proc.entry_point = elf.entry;
     proc.user_stack_top = USER_STACK_TOP;
     proc.brk = max_addr;
@@ -497,7 +504,7 @@ pub fn create_process(name: &str, _elf_data: &[u8]) -> Result<u32, &'static str>
 /// Switch to Ring 3 and start executing user code for the given process.
 #[cfg(target_arch = "x86_64")]
 pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
-    let (entry, stack, cr3) = {
+    let (entry, stack, _cr3) = {
         let mut table = PROCESS_TABLE.lock();
         let slot = table.find_by_pid(pid).ok_or("process not found")?;
         let proc = table.slots[slot].as_mut().unwrap();
@@ -509,31 +516,31 @@ pub fn enter_userspace(pid: u32) -> Result<(), &'static str> {
 
     serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x}", pid, entry, stack);
 
+    // Send EOI + enable interrupts (we're called from interrupt context via shell)
     unsafe {
-        do_iretq(entry, stack, cr3);
+        crate::interrupts::end_of_interrupt(1);
+    }
+    x86_64::instructions::interrupts::enable();
+
+    unsafe {
+        do_iretq(entry, stack, 0);
     }
 }
 
 #[cfg(target_arch = "x86_64")]
 unsafe fn do_iretq(entry: u64, stack: u64, cr3_val: u64) -> ! {
+    // Skip CR3 switch for now — use kernel page table
+    let _ = cr3_val;
+
+    // iretq to Ring 3
     core::arch::asm!(
-        // Save old CR3 on the kernel stack so syscall handler can restore
-        "mov rax, cr3",
-        "push rax",
-        // Load user page table
-        "mov rax, {cr3}",
-        "mov cr3, rax",
-        // Build iretq frame
-        "push {user_ds}",   // SS
-        "push {stack}",     // RSP
-        "push 0x200",       // RFLAGS (IF=1, interrupts enabled)
-        "push {user_cs}",   // CS
-        "push {entry}",     // RIP
+        "push 0x2B",        // SS = user data (index 5, RPL 3)
+        "push {stack}",     // RSP = user stack
+        "push 0x200",       // RFLAGS = IF=1
+        "push 0x33",        // CS = user code (index 6, RPL 3)
+        "push {entry}",     // RIP = entry point
         "iretq",
-        cr3 = in(reg) cr3_val,
-        user_ds = in(reg) USER_DS,
         stack = in(reg) stack,
-        user_cs = in(reg) USER_CS,
         entry = in(reg) entry,
         options(noreturn),
     );
