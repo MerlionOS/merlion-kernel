@@ -666,5 +666,170 @@ pub fn init() {
         0x0f, 0x1e, 0x2d, 0x3c, 0x4b, 0x5a, 0x69, 0x78,
     ];
     csprng_init(&seed);
-    crate::serial_println!("[crypto_ext] initialized: AES-128, RSA, X.509, ChaCha20 CSPRNG, PBKDF2");
+    crate::serial_println!("[crypto_ext] initialized: AES-128, RSA, X.509, ChaCha20 CSPRNG, PBKDF2, DH, AES-CTR");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Diffie-Hellman Key Exchange (simplified)
+// ═══════════════════════════════════════════════════════════════════
+
+/// DH group 14 prime (RFC 3526) — simplified to 64-bit for no_std kernel.
+/// A real implementation would use 2048-bit integers; this demonstrates
+/// the protocol flow with our existing mod_pow.
+const DH_PRIME: u64 = 0xFFFF_FFFF_FFFF_FFC5; // large 64-bit prime
+const DH_GENERATOR: u64 = 2;
+
+/// Diffie-Hellman keypair.
+pub struct DhKeypair {
+    pub private_key: u64,
+    pub public_key: u64,
+}
+
+/// Generate a DH keypair: private = random, public = g^private mod p.
+pub fn dh_generate_keypair() -> DhKeypair {
+    let private_key = csprng_u64() | 1; // ensure odd
+    let public_key = mod_pow(DH_GENERATOR, private_key, DH_PRIME);
+    DhKeypair { private_key, public_key }
+}
+
+/// Compute shared secret from our private key and peer's public key.
+/// shared = peer_public ^ our_private mod p
+pub fn dh_shared_secret(our_private: u64, peer_public: u64) -> u64 {
+    mod_pow(peer_public, our_private, DH_PRIME)
+}
+
+/// Derive a 16-byte AES key from a DH shared secret using SHA-256.
+pub fn dh_derive_key(shared_secret: u64) -> [u8; 16] {
+    let secret_bytes = shared_secret.to_be_bytes();
+    let hash = crate::crypto::sha256(&secret_bytes);
+    let mut key = [0u8; 16];
+    key.copy_from_slice(&hash[..16]);
+    key
+}
+
+/// Derive a 16-byte IV from the shared secret (use second half of SHA-256).
+pub fn dh_derive_iv(shared_secret: u64) -> [u8; 16] {
+    let secret_bytes = shared_secret.to_be_bytes();
+    let hash = crate::crypto::sha256(&secret_bytes);
+    let mut iv = [0u8; 16];
+    iv.copy_from_slice(&hash[16..32]);
+    iv
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  AES-128-CTR Mode (for SSH transport encryption)
+// ═══════════════════════════════════════════════════════════════════
+
+/// AES-128-CTR cipher state.
+pub struct AesCtr {
+    key: [u8; 16],
+    nonce: [u8; 16], // 128-bit counter/nonce
+    counter: u64,
+}
+
+impl AesCtr {
+    /// Create a new AES-128-CTR cipher with the given key and IV.
+    pub fn new(key: [u8; 16], iv: [u8; 16]) -> Self {
+        Self { key, nonce: iv, counter: 0 }
+    }
+
+    /// Generate the next keystream block.
+    fn next_block(&mut self) -> [u8; 16] {
+        let mut ctr_block = self.nonce;
+        // XOR counter into the last 8 bytes of the nonce
+        let ctr_bytes = self.counter.to_be_bytes();
+        for i in 0..8 {
+            ctr_block[8 + i] ^= ctr_bytes[i];
+        }
+        self.counter += 1;
+        aes128_encrypt_block(&ctr_block, &self.key)
+    }
+
+    /// Encrypt or decrypt data in-place (CTR mode is symmetric).
+    pub fn process(&mut self, data: &mut [u8]) {
+        let mut keystream = [0u8; 16];
+        let mut ks_pos = 16; // force generation of first block
+
+        for byte in data.iter_mut() {
+            if ks_pos >= 16 {
+                keystream = self.next_block();
+                ks_pos = 0;
+            }
+            *byte ^= keystream[ks_pos];
+            ks_pos += 1;
+        }
+    }
+
+    /// Encrypt data, returning a new Vec.
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Vec<u8> {
+        let mut out = plaintext.to_vec();
+        self.process(&mut out);
+        out
+    }
+
+    /// Decrypt data, returning a new Vec (same as encrypt for CTR).
+    pub fn decrypt(&mut self, ciphertext: &[u8]) -> Vec<u8> {
+        let mut out = ciphertext.to_vec();
+        self.process(&mut out);
+        out
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SSH Transport Crypto Context
+// ═══════════════════════════════════════════════════════════════════
+
+/// Crypto state for an SSH session after key exchange.
+pub struct SshCrypto {
+    pub encrypt: AesCtr,
+    pub decrypt: AesCtr,
+    pub mac_key: [u8; 32],  // HMAC-SHA256 key
+    pub seq_send: u32,
+    pub seq_recv: u32,
+}
+
+impl SshCrypto {
+    /// Create SSH crypto context from a DH shared secret.
+    pub fn from_shared_secret(shared: u64) -> Self {
+        let enc_key = dh_derive_key(shared);
+        let enc_iv = dh_derive_iv(shared);
+        // Derive separate decrypt key by hashing with a different label
+        let mut dec_seed = shared.to_be_bytes().to_vec();
+        dec_seed.push(0x01); // differentiate from encrypt key
+        let dec_hash = crate::crypto::sha256(&dec_seed);
+        let mut dec_key = [0u8; 16];
+        dec_key.copy_from_slice(&dec_hash[..16]);
+        let mut dec_iv = [0u8; 16];
+        dec_iv.copy_from_slice(&dec_hash[16..32]);
+        // MAC key from another derivation
+        dec_seed.push(0x02);
+        let mac_hash = crate::crypto::sha256(&dec_seed);
+        Self {
+            encrypt: AesCtr::new(enc_key, enc_iv),
+            decrypt: AesCtr::new(dec_key, dec_iv),
+            mac_key: mac_hash,
+            seq_send: 0,
+            seq_recv: 0,
+        }
+    }
+
+    /// Encrypt an SSH packet payload (in-place).
+    pub fn encrypt_packet(&mut self, data: &mut [u8]) {
+        self.encrypt.process(data);
+        self.seq_send += 1;
+    }
+
+    /// Decrypt an SSH packet payload (in-place).
+    pub fn decrypt_packet(&mut self, data: &mut [u8]) {
+        self.decrypt.process(data);
+        self.seq_recv += 1;
+    }
+
+    /// Compute HMAC-SHA256 MAC for a packet.
+    pub fn compute_mac(&self, seq: u32, data: &[u8]) -> [u8; 32] {
+        let mut mac_data = Vec::with_capacity(4 + data.len());
+        mac_data.extend_from_slice(&seq.to_be_bytes());
+        mac_data.extend_from_slice(data);
+        crate::crypto::hmac_sha256(&self.mac_key, &mac_data)
+    }
 }

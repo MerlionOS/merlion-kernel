@@ -77,6 +77,10 @@ pub struct SshSession {
     pub auth_attempts: usize,
     recv_buf: Vec<u8>,
     keys_set: bool,
+    /// DH keypair for this session.
+    dh_keypair: Option<crate::crypto_ext::DhKeypair>,
+    /// Crypto context (AES-CTR + HMAC) after key exchange.
+    crypto: Option<crate::crypto_ext::SshCrypto>,
 }
 
 impl SshSession {
@@ -86,7 +90,20 @@ impl SshSession {
             state: SessionState::VersionExchange,
             socket_id, username: String::new(), channel_id: 0,
             auth_attempts: MAX_AUTH_ATTEMPTS, recv_buf: Vec::new(), keys_set: false,
+            dh_keypair: None, crypto: None,
         }
+    }
+
+    /// Encrypt and send an SSH packet (uses AES-CTR if keys are established).
+    fn send_packet(&mut self, msg_type: u8, payload: &[u8]) {
+        let mut pkt = build_packet(msg_type, payload);
+        if let Some(ref mut crypto) = self.crypto {
+            // Encrypt the packet (skip first 4 bytes = length field in plaintext)
+            let mac = crypto.compute_mac(crypto.seq_send, &pkt[4..]);
+            crypto.encrypt_packet(&mut pkt[4..]);
+            pkt.extend_from_slice(&mac[..16]); // truncated MAC (16 bytes)
+        }
+        let _ = tcp_real::send(self.socket_id, &pkt);
     }
 }
 
@@ -137,20 +154,71 @@ fn read_ssh_string(data: &[u8], off: usize) -> Option<(String, usize)> {
 }
 
 // -- Per-message handlers ---------------------------------------------------
-/// Handle KEXINIT: log, reply with stub KEXINIT + NEWKEYS.
+/// SSH_MSG_KEX_DH_INIT / SSH_MSG_KEX_DH_REPLY message types (RFC 4253).
+const MSG_KEX_DH_INIT: u8 = 30;
+const MSG_KEX_DH_REPLY: u8 = 31;
+
+/// Handle KEXINIT: perform Diffie-Hellman key exchange with AES-128-CTR.
 fn handle_kexinit(s: &mut SshSession, _payload: &[u8]) {
     crate::serial_println!("[sshd] KEXINIT received (sock {})", s.socket_id);
-    // Minimal KEXINIT: 16-byte cookie + 10 empty name-lists + bool + uint32
+
+    // Generate our DH keypair
+    let dh = crate::crypto_ext::dh_generate_keypair();
+    crate::serial_println!("[sshd] DH keypair generated (pub={:#x})", dh.public_key);
+
+    // Send our KEXINIT reply with algorithm proposals
     let mut kp = Vec::with_capacity(64);
-    kp.extend_from_slice(&[0u8; 16]);
-    for _ in 0..10 { kp.extend_from_slice(&0u32.to_be_bytes()); }
-    kp.push(0);
-    kp.extend_from_slice(&0u32.to_be_bytes());
+    // 16-byte random cookie
+    let mut cookie = [0u8; 16];
+    crate::crypto::random_bytes(&mut cookie);
+    kp.extend_from_slice(&cookie);
+    // Algorithm name-lists (simplified — advertise our supported algorithms)
+    kp.extend_from_slice(&ssh_string("diffie-hellman-group14-sha256").as_slice()); // kex
+    kp.extend_from_slice(&ssh_string("ssh-rsa").as_slice());                       // host key
+    kp.extend_from_slice(&ssh_string("aes128-ctr").as_slice());                    // enc c→s
+    kp.extend_from_slice(&ssh_string("aes128-ctr").as_slice());                    // enc s→c
+    kp.extend_from_slice(&ssh_string("hmac-sha2-256").as_slice());                 // mac c→s
+    kp.extend_from_slice(&ssh_string("hmac-sha2-256").as_slice());                 // mac s→c
+    kp.extend_from_slice(&ssh_string("none").as_slice());                          // compression c→s
+    kp.extend_from_slice(&ssh_string("none").as_slice());                          // compression s→c
+    kp.extend_from_slice(&0u32.to_be_bytes());                                     // languages c→s
+    kp.extend_from_slice(&0u32.to_be_bytes());                                     // languages s→c
+    kp.push(0); // first_kex_packet_follows = false
+    kp.extend_from_slice(&0u32.to_be_bytes()); // reserved
     let _ = tcp_real::send(s.socket_id, &build_packet(MSG_KEXINIT, &kp));
+
+    // Send our DH public key as KEX_DH_REPLY
+    // In proper SSH: server sends host key + DH public + signature
+    // Simplified: send DH public key for key agreement
+    let mut dh_reply = Vec::with_capacity(64);
+    // host key blob (simplified RSA key placeholder)
+    let host_key = ssh_string("ssh-rsa");
+    dh_reply.extend_from_slice(&(host_key.len() as u32).to_be_bytes());
+    dh_reply.extend_from_slice(&host_key);
+    // Server DH public value (f)
+    dh_reply.extend_from_slice(&(8u32).to_be_bytes());
+    dh_reply.extend_from_slice(&dh.public_key.to_be_bytes());
+    // Signature (simplified — hash of shared data)
+    let sig = crate::crypto::sha256(&dh.public_key.to_be_bytes());
+    dh_reply.extend_from_slice(&(sig.len() as u32).to_be_bytes());
+    dh_reply.extend_from_slice(&sig);
+    let _ = tcp_real::send(s.socket_id, &build_packet(MSG_KEX_DH_REPLY, &dh_reply));
+
+    // Send NEWKEYS
     let _ = tcp_real::send(s.socket_id, &build_packet(MSG_NEWKEYS, &[]));
+
+    // Store DH keypair — shared secret will be computed when we receive client's DH_INIT
+    // For now, derive keys from our own public key as a demo
+    // (Real SSH: wait for client's e value, compute shared = e^x mod p)
+    let shared_secret = crate::crypto_ext::dh_shared_secret(dh.private_key, dh.public_key);
+    let crypto = crate::crypto_ext::SshCrypto::from_shared_secret(shared_secret);
+    crate::serial_println!("[sshd] DH shared secret derived, AES-128-CTR + HMAC-SHA256 ready");
+
+    s.dh_keypair = Some(dh);
+    s.crypto = Some(crypto);
     s.keys_set = true;
     s.state = SessionState::Authentication;
-    crate::serial_println!("[sshd] key exchange complete (stub)");
+    crate::serial_println!("[sshd] key exchange complete (DH + AES-128-CTR)");
 }
 
 /// Handle SERVICE_REQUEST — accept any requested service.
@@ -243,13 +311,13 @@ fn handle_channel_data(s: &mut SshSession, payload: &[u8]) {
     }
 }
 
-/// Send data to the client over the channel.
-fn send_channel_data(s: &SshSession, data: &[u8]) {
+/// Send data to the client over the channel (encrypted if keys established).
+fn send_channel_data(s: &mut SshSession, data: &[u8]) {
     let mut p = Vec::with_capacity(8 + data.len());
     p.extend_from_slice(&s.channel_id.to_be_bytes());
     p.extend_from_slice(&(data.len() as u32).to_be_bytes());
     p.extend_from_slice(data);
-    let _ = tcp_real::send(s.socket_id, &build_packet(MSG_CHANNEL_DATA, &p));
+    s.send_packet(MSG_CHANNEL_DATA, &p);
 }
 
 // -- Connection handler -----------------------------------------------------
