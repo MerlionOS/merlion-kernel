@@ -772,6 +772,12 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "wc"    => Some(crate::ulibc::gen_wc()),
         "ls"    => Some(crate::ulibc::gen_ls()),
         "init"  => Some(crate::ulibc::gen_init()),
+        // Applications
+        "ush"         => Some(crate::ulibc::gen_ush()),
+        "fwrite-test" => Some(crate::ulibc::gen_fwrite_test()),
+        "paint"       => Some(crate::ulibc::gen_paint()),
+        "wget-user"   => Some(crate::ulibc::gen_wget_user()),
+        "pkg-install" => Some(crate::ulibc::gen_pkg_install()),
         _ => None,
     };
     if let Some(c) = gen_code {
@@ -793,6 +799,8 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         "dynlink-test",
         // Standard user programs
         "cat", "echo", "wc", "ls", "init",
+        // Applications
+        "ush", "fwrite-test", "paint", "wget-user", "pkg-install",
     ]
 }
 
@@ -912,7 +920,11 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     table.slots[slot] = Some(proc);
 
     // Load libc pages for U5 programs
-    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" | "cat" | "echo" | "wc" | "ls" | "init");
+    let is_libc_program = matches!(name,
+        "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" |
+        "cat" | "echo" | "wc" | "ls" | "init" |
+        "ush" | "fwrite-test" | "paint" | "wget-user" | "pkg-install"
+    );
     if is_libc_program {
         ensure_libc_loaded()?;
     }

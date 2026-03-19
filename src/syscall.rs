@@ -144,6 +144,9 @@ const SYS_SHMGET: u64 = 191;
 const SYS_SHMAT: u64 = 192;
 const SYS_SHMDT: u64 = 193;
 const SYS_TTY_READ: u64 = 194;
+const SYS_FWRITE: u64 = 195;
+const SYS_FBWRITE: u64 = 196;
+const SYS_WGET: u64 = 197;
 
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
@@ -1062,6 +1065,81 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                     }
                     _ => {
                         set_retval(0); // no data available
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        // ── File/Device I/O ────────────────────────────────────────
+
+        SYS_FWRITE => {
+            // fwrite(fd, buf_ptr, len) → bytes_written
+            // Proper fd-based write (unlike SYS_WRITE which is stdout-only)
+            let fd = arg1 as usize;
+            let buf_ptr = arg2;
+            let len = arg3 as usize;
+            if buf_ptr == 0 || len == 0 || len > 4096 {
+                set_retval(-1);
+            } else {
+                let data = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, len) };
+                let result = if let Some(pid) = crate::userspace::current_process() {
+                    crate::userspace::proc_write(pid, fd, data)
+                } else {
+                    crate::fd::write(fd, data)
+                };
+                match result {
+                    Ok(n) => {
+                        serial_println!("[syscall] fwrite(fd {}, {} bytes) = {}", fd, len, n);
+                        set_retval(n as i64);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] fwrite failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            }
+        }
+
+        SYS_FBWRITE => {
+            // fbwrite(x, y, color) — set pixel in framebuffer
+            // If x == 0xFFFF, y == 0xFFFF: render the framebuffer to screen
+            let x = arg1 as usize;
+            let y = arg2 as usize;
+            let color = arg3 as u8;
+            let mut fb = crate::framebuf::FRAMEBUF.lock();
+            if x == 0xFFFF && y == 0xFFFF {
+                fb.render();
+                serial_println!("[syscall] fbwrite: render");
+            } else {
+                fb.set_pixel(x, y, color);
+            }
+            set_retval(0);
+        }
+
+        SYS_WGET => {
+            // wget(url_ptr, url_len, buf_ptr) → bytes_received
+            // Fetch URL and write response body to user buffer
+            if let Some(url) = read_user_str(arg1, arg2) {
+                match crate::wget_real::fetch(&url) {
+                    Ok(body) => {
+                        let buf_ptr = arg3;
+                        if buf_ptr != 0 {
+                            let n = unsafe {
+                                write_user_buf(buf_ptr, body.as_bytes(), 4096)
+                            };
+                            serial_println!("[syscall] wget({}) = {} bytes", url, n);
+                            set_retval(n as i64);
+                        } else {
+                            serial_println!("[user] {}", body);
+                            println!("[user] {}", body);
+                            set_retval(body.len() as i64);
+                        }
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] wget({}) failed: {}", url, e);
+                        set_retval(-1);
                     }
                 }
             } else {

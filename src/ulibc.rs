@@ -1202,3 +1202,396 @@ pub fn gen_init() -> Vec<u8> {
 
     c
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  USERSPACE APPLICATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+/// Helper: emit raw syscall (mov rax, NUM; int 0x80) — 9 bytes.
+fn emit_raw_syscall(c: &mut Vec<u8>, num: u32) {
+    c.extend_from_slice(&[0x48, 0xC7, 0xC0]); // mov rax, imm32
+    c.extend_from_slice(&num.to_le_bytes());
+    c.extend_from_slice(&[0xCD, 0x80]); // int 0x80
+}
+
+/// Generate "ush" (micro-shell): runs a sequence of commands demonstrating
+/// fork+exec pattern. Prints prompt, runs programs, prints results.
+pub fn gen_ush() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // Banner
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // fork() → child_pid
+    emit_raw_syscall(&mut c, 110); // SYS_FORK
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (child_pid)
+
+    // puts("ush: forked child pid=")
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    let nl_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exec("hello") on child — SYS_EXEC(111)
+    let msg3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    let prog_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // program name ptr
+    emit_mov_rsi_imm64(&mut c, 5); // "hello" len
+    emit_raw_syscall(&mut c, 111); // SYS_EXEC
+    // If exec returns (failure), continue
+
+    // getpid
+    let msg4_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_call_libc(&mut c, FN_GETPID);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Done
+    let msg5_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"ush: MerlionOS micro-shell (Ring 3)\n\0");
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"ush: forked child pid=\0");
+    let nl_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"\n\0");
+    let msg3_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"ush: exec hello...\n\0");
+    let prog_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"hello\0");
+    let msg4_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"\nush: back from exec, pid=\0");
+    let msg5_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"\nush: shell exiting\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+    c[nl_fixup..nl_fixup+8].copy_from_slice(&nl_addr.to_le_bytes());
+    c[msg3_fixup..msg3_fixup+8].copy_from_slice(&msg3_addr.to_le_bytes());
+    c[prog_fixup..prog_fixup+8].copy_from_slice(&prog_addr.to_le_bytes());
+    c[msg4_fixup..msg4_fixup+8].copy_from_slice(&msg4_addr.to_le_bytes());
+    c[msg5_fixup..msg5_fixup+8].copy_from_slice(&msg5_addr.to_le_bytes());
+
+    c
+}
+
+/// Generate "fwrite-test": writes a file to VFS, reads it back, prints contents.
+pub fn gen_fwrite_test() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // puts("fwrite-test: creating /tmp/hello.txt")
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // fd = open("/tmp/hello.txt", 14, 1)  — flags=1 means write
+    let path_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    let pathlen_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_mov_rdx_imm64(&mut c, 1); // flags = write
+    emit_call_libc(&mut c, FN_OPEN);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (fd)
+
+    // fwrite(fd, "Hello from userspace file write!\n", 33) via SYS_FWRITE (195)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12 (fd)
+    let data_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0); // data ptr
+    emit_mov_rdx_imm64(&mut c, 33); // data len
+    emit_raw_syscall(&mut c, 195); // SYS_FWRITE
+
+    // close(fd)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_CLOSE);
+
+    // Now read it back: open for read
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    let path2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    let pathlen2_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_mov_rdx_imm64(&mut c, 0); // flags = read
+    emit_call_libc(&mut c, FN_OPEN);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (fd)
+
+    // buf = malloc(256)
+    emit_mov_rdi_imm64(&mut c, 256);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (buf)
+
+    // n = read(fd, buf, 256)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    c.extend_from_slice(&[0x4C, 0x89, 0xEE]); // mov rsi, r13
+    emit_mov_rdx_imm64(&mut c, 256);
+    emit_call_libc(&mut c, FN_READ);
+
+    // write(buf, n) to stdout
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    emit_mov_rsi_rax(&mut c);
+    emit_call_libc(&mut c, FN_WRITE);
+
+    // close
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_CLOSE);
+
+    let msg3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"fwrite-test: writing /tmp/hello.txt\n\0");
+    let path_addr = text_base + c.len() as u64;
+    let path = b"/tmp/hello.txt";
+    let path_len = path.len() as u64;
+    c.extend_from_slice(path);
+    c.push(0);
+    let data_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"Hello from userspace file write!\n\0");
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"fwrite-test: reading back:\n\0");
+    let msg3_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"fwrite-test: done!\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[path_fixup..path_fixup+8].copy_from_slice(&path_addr.to_le_bytes());
+    c[pathlen_fixup..pathlen_fixup+8].copy_from_slice(&path_len.to_le_bytes());
+    c[data_fixup..data_fixup+8].copy_from_slice(&data_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+    c[path2_fixup..path2_fixup+8].copy_from_slice(&path_addr.to_le_bytes());
+    c[pathlen2_fixup..pathlen2_fixup+8].copy_from_slice(&path_len.to_le_bytes());
+    c[msg3_fixup..msg3_fixup+8].copy_from_slice(&msg3_addr.to_le_bytes());
+
+    c
+}
+
+/// Generate "paint" program: draws colored rectangles on framebuffer.
+pub fn gen_paint() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Draw a 20x10 rectangle at (10,5) with color 4 (red)
+    // for y in 5..15: for x in 10..30: fbwrite(x, y, 4)
+    // Use r12=y, r13=x
+    c.extend_from_slice(&[0x49, 0xC7, 0xC4, 0x05, 0x00, 0x00, 0x00]); // mov r12, 5 (y_start)
+    // .y_loop:
+    let y_loop = c.len();
+    c.extend_from_slice(&[0x49, 0xC7, 0xC5, 0x0A, 0x00, 0x00, 0x00]); // mov r13, 10 (x_start)
+    // .x_loop:
+    let x_loop = c.len();
+    // fbwrite(x, y, color) via SYS_FBWRITE (196)
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13 (x)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE6]); // mov rsi, r12 (y)
+    emit_mov_rdx_imm64(&mut c, 4); // color = red
+    emit_raw_syscall(&mut c, 196);
+    // inc r13
+    c.extend_from_slice(&[0x49, 0xFF, 0xC5]);
+    // cmp r13, 30
+    c.extend_from_slice(&[0x49, 0x83, 0xFD, 0x1E]);
+    // jl .x_loop
+    let jl_disp = (x_loop as isize - (c.len() as isize + 2)) as i8;
+    c.extend_from_slice(&[0x7C, jl_disp as u8]);
+    // inc r12
+    c.extend_from_slice(&[0x49, 0xFF, 0xC4]);
+    // cmp r12, 15
+    c.extend_from_slice(&[0x49, 0x83, 0xFC, 0x0F]);
+    // jl .y_loop
+    let jl_disp2 = (y_loop as isize - (c.len() as isize + 2)) as i8;
+    c.extend_from_slice(&[0x7C, jl_disp2 as u8]);
+
+    // Draw another rectangle at (40,5) with color 2 (green)
+    c.extend_from_slice(&[0x49, 0xC7, 0xC4, 0x05, 0x00, 0x00, 0x00]); // mov r12, 5
+    let y2_loop = c.len();
+    c.extend_from_slice(&[0x49, 0xC7, 0xC5, 0x28, 0x00, 0x00, 0x00]); // mov r13, 40
+    let x2_loop = c.len();
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    c.extend_from_slice(&[0x4C, 0x89, 0xE6]); // mov rsi, r12
+    emit_mov_rdx_imm64(&mut c, 2); // green
+    emit_raw_syscall(&mut c, 196);
+    c.extend_from_slice(&[0x49, 0xFF, 0xC5]);
+    c.extend_from_slice(&[0x49, 0x83, 0xFD, 0x3C]); // cmp r13, 60
+    let jl3 = (x2_loop as isize - (c.len() as isize + 2)) as i8;
+    c.extend_from_slice(&[0x7C, jl3 as u8]);
+    c.extend_from_slice(&[0x49, 0xFF, 0xC4]);
+    c.extend_from_slice(&[0x49, 0x83, 0xFC, 0x0F]); // cmp r12, 15
+    let jl4 = (y2_loop as isize - (c.len() as isize + 2)) as i8;
+    c.extend_from_slice(&[0x7C, jl4 as u8]);
+
+    // Render framebuffer: fbwrite(0xFFFF, 0xFFFF, 0)
+    emit_mov_rdi_imm64(&mut c, 0xFFFF);
+    emit_mov_rsi_imm64(&mut c, 0xFFFF);
+    emit_mov_rdx_imm64(&mut c, 0);
+    emit_raw_syscall(&mut c, 196);
+
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"paint: drawing rectangles on framebuffer...\n\0");
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"paint: done! (red and green rectangles drawn)\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+
+    c
+}
+
+/// Generate "wget-user" program: fetches a URL via SYS_WGET.
+pub fn gen_wget_user() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // buf = malloc(4096) for response
+    emit_mov_rdi_imm64(&mut c, 4096);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (buf)
+
+    // wget(url_ptr, url_len, buf_ptr) via SYS_WGET (197)
+    let url_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // url
+    let urllen_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0); // url_len
+    c.extend_from_slice(&[0x4C, 0x89, 0xE2]); // mov rdx, r12 (buf)
+    emit_raw_syscall(&mut c, 197);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (bytes received)
+
+    // Print result
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    let msg3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"wget-user: fetching http://10.0.2.2/\n\0");
+    let url_addr = text_base + c.len() as u64;
+    let url = b"http://10.0.2.2/";
+    let url_len = url.len() as u64;
+    c.extend_from_slice(url);
+    c.push(0);
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"wget-user: received \0");
+    let msg3_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b" bytes\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[url_fixup..url_fixup+8].copy_from_slice(&url_addr.to_le_bytes());
+    c[urllen_fixup..urllen_fixup+8].copy_from_slice(&url_len.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+    c[msg3_fixup..msg3_fixup+8].copy_from_slice(&msg3_addr.to_le_bytes());
+
+    c
+}
+
+/// Generate "pkg-install" program: simulated package install from VFS.
+pub fn gen_pkg_install() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Create /bin/demo file via open+fwrite
+    let path_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    let pathlen_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_mov_rdx_imm64(&mut c, 1);
+    emit_call_libc(&mut c, FN_OPEN);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (fd)
+
+    // Write package data (simulated ELF header)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    let data_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_mov_rdx_imm64(&mut c, 28);
+    emit_raw_syscall(&mut c, 195); // SYS_FWRITE
+
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_CLOSE);
+
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    let msg3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"pkg-install: installing package 'demo'...\n\0");
+    let path_addr = text_base + c.len() as u64;
+    let path = b"/bin/demo";
+    let path_len = path.len() as u64;
+    c.extend_from_slice(path);
+    c.push(0);
+    let data_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"#!/bin/echo Hello from demo!\n\0");
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"pkg-install: installed /bin/demo\n\0");
+    let msg3_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"pkg-install: done! Run with: run-user demo\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[path_fixup..path_fixup+8].copy_from_slice(&path_addr.to_le_bytes());
+    c[pathlen_fixup..pathlen_fixup+8].copy_from_slice(&path_len.to_le_bytes());
+    c[data_fixup..data_fixup+8].copy_from_slice(&data_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+    c[msg3_fixup..msg3_fixup+8].copy_from_slice(&msg3_addr.to_le_bytes());
+
+    c
+}
