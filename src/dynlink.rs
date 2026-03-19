@@ -529,3 +529,17 @@ pub fn info() -> String {
         DYNLIB_BASE, DYNLIB_SLOT_SIZE, MAX_LIBRARIES, linker.libraries.len(),
     )
 }
+
+/// Get raw libhello code + symbol offsets for elf_interp.
+pub fn gen_libhello_raw() -> (Vec<u8>, Vec<(String, u64)>) {
+    let (code, syms) = gen_libhello();
+    let offsets = syms.iter().map(|s| (s.name.clone(), s.offset)).collect();
+    (code, offsets)
+}
+
+/// Get raw libmath code + symbol offsets for elf_interp.
+pub fn gen_libmath_raw() -> (Vec<u8>, Vec<(String, u64)>) {
+    let (code, syms) = gen_libmath();
+    let offsets = syms.iter().map(|s| (s.name.clone(), s.offset)).collect();
+    (code, offsets)
+}
