@@ -198,9 +198,63 @@ run-loongarch: loongarch
 	qemu-system-loongarch64 -machine virt -m 256M -serial stdio -display none \
 		-kernel $(LOONGARCH_KERNEL)
 
+# -------------------------------------------------------
+# VMware
+# -------------------------------------------------------
+
+VMDK_FILE = merlionos.vmdk
+
+# Create a VMDK disk image for VMware Workstation/Fusion
+# Uses the BIOS bootimage (most compatible)
+vmdk: build
+	@echo "Converting bootimage to VMDK for VMware..."
+	qemu-img convert -f raw -O vmdk $(KERNEL_BIN) $(VMDK_FILE) 2>/dev/null || \
+		cp $(KERNEL_BIN) $(VMDK_FILE)
+	@echo "VMDK: $(VMDK_FILE)"
+	@echo ""
+	@echo "=== VMware Setup ==="
+	@echo ""
+	@echo "=== VMware Setup ==="
+	@echo "  1. Create new VM → Other → Other 64-bit"
+	@echo "  2. Use existing disk: $(VMDK_FILE)"
+	@echo "  3. Firmware: BIOS (default)"
+	@echo "  4. RAM: 256 MB"
+	@echo "  5. Add serial port → Output to file"
+	@echo "  6. Boot"
+	@echo ""
+	@echo "Or use: make vmware-config  (creates .vmx file)"
+
+# Create VMware .vmx config file for quick launch
+vmware-config: vmdk
+	@echo 'Creating MerlionOS.vmx...'
+	@echo '.encoding = "UTF-8"' > MerlionOS.vmx
+	@echo 'config.version = "8"' >> MerlionOS.vmx
+	@echo 'virtualHW.version = "20"' >> MerlionOS.vmx
+	@echo 'displayName = "MerlionOS v100.9"' >> MerlionOS.vmx
+	@echo 'guestOS = "other-64"' >> MerlionOS.vmx
+	@echo 'memsize = "256"' >> MerlionOS.vmx
+	@echo 'numvcpus = "2"' >> MerlionOS.vmx
+	@echo 'firmware = "bios"' >> MerlionOS.vmx
+	@echo 'ide0:0.present = "TRUE"' >> MerlionOS.vmx
+	@echo 'ide0:0.deviceType = "disk"' >> MerlionOS.vmx
+	@echo 'ide0:0.fileName = "$(CURDIR)/$(VMDK_FILE)"' >> MerlionOS.vmx
+	@echo 'ide0:0.startConnected = "TRUE"' >> MerlionOS.vmx
+	@echo 'serial0.present = "TRUE"' >> MerlionOS.vmx
+	@echo 'serial0.fileType = "file"' >> MerlionOS.vmx
+	@echo 'serial0.fileName = "serial.log"' >> MerlionOS.vmx
+	@echo 'ethernet0.present = "TRUE"' >> MerlionOS.vmx
+	@echo 'ethernet0.connectionType = "nat"' >> MerlionOS.vmx
+	@echo 'ethernet0.virtualDev = "e1000"' >> MerlionOS.vmx
+	@echo 'sound.present = "TRUE"' >> MerlionOS.vmx
+	@echo 'sound.virtualDev = "hdaudio"' >> MerlionOS.vmx
+	@echo "Created MerlionOS.vmx"
+	@echo ""
+	@echo "Launch with: open MerlionOS.vmx  (macOS VMware Fusion)"
+	@echo "         or: vmrun start MerlionOS.vmx"
+
 clean:
 	cargo clean
-	rm -f $(DISK_IMG)
+	rm -f $(DISK_IMG) $(VMDK_FILE) MerlionOS.vmx
 
 # Automated smoke test
 test-smoke:
