@@ -614,6 +614,133 @@ fn load_program_from_vfs(name: &str) -> Option<Vec<u8>> {
     None
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  ISOLATED PROCESS (per-process page tables)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Create a process with its own page table (true isolation).
+/// Maps user code, stack, libc, and data into a per-process address space.
+#[cfg(target_arch = "x86_64")]
+pub fn create_isolated_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> {
+    use x86_64::structures::paging::{Page, PageTableFlags};
+    use x86_64::VirtAddr;
+
+    let elf = parse_elf64(elf_data)?;
+    let pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
+
+    serial_println!("[userspace] creating isolated process '{}' pid={}", name, pid);
+
+    // Create per-process page table (clones kernel upper half)
+    let (pml4_frame, mut mapper) = crate::memory::create_user_page_table()
+        .ok_or("failed to create user page table")?;
+    let pml4_phys = pml4_frame.start_address().as_u64();
+
+    let user_flags = PageTableFlags::PRESENT | PageTableFlags::USER_ACCESSIBLE;
+    let user_rw = PageTableFlags::PRESENT | PageTableFlags::WRITABLE | PageTableFlags::USER_ACCESSIBLE;
+
+    // Map ELF segments into per-process page table
+    let mut max_addr: u64 = HEAP_BASE;
+    for seg in &elf.segments {
+        if seg.p_type != 1 { continue; } // PT_LOAD
+        let memsz = seg.p_memsz;
+        if memsz == 0 { continue; }
+
+        let flags = if seg.p_flags & 2 != 0 { user_rw } else { user_flags };
+        let start_page = seg.p_vaddr & !0xFFF;
+        let end = seg.p_vaddr + memsz;
+        let mut page_addr = start_page;
+        while page_addr < end {
+            let page = Page::containing_address(VirtAddr::new(page_addr));
+            let frame = crate::memory::map_page(&mut mapper, page, flags)
+                .ok_or("failed to map ELF page")?;
+            // Copy file data
+            let dest = crate::memory::phys_to_virt(frame.start_address());
+            unsafe { core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096); }
+            if seg.p_filesz > 0 {
+                let copy_start = if seg.p_vaddr > page_addr { seg.p_vaddr } else { page_addr };
+                let copy_end = if seg.p_vaddr + seg.p_filesz < page_addr + 4096 {
+                    seg.p_vaddr + seg.p_filesz
+                } else { page_addr + 4096 };
+                if copy_start < copy_end {
+                    let src_off = (copy_start - seg.p_vaddr + seg.p_offset) as usize;
+                    let dst_off = (copy_start - page_addr) as usize;
+                    let len = (copy_end - copy_start) as usize;
+                    if src_off + len <= elf_data.len() {
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                elf_data.as_ptr().add(src_off),
+                                dest.as_mut_ptr::<u8>().add(dst_off),
+                                len,
+                            );
+                        }
+                    }
+                }
+            }
+            if page_addr + 4096 > max_addr { max_addr = page_addr + 4096; }
+            page_addr += 4096;
+        }
+    }
+
+    // Map stack pages
+    for i in 0..STACK_PAGES {
+        let stack_page = Page::containing_address(
+            VirtAddr::new(USER_STACK_TOP - (i + 1) * 4096),
+        );
+        crate::memory::map_page(&mut mapper, stack_page, user_rw)
+            .ok_or("failed to map stack page")?;
+    }
+
+    // Map libc pages (code + data) into per-process page table
+    let libc_code = crate::ulibc::generate_libc_code();
+    let libc_data = crate::ulibc::generate_libc_data();
+
+    let libc_page = Page::containing_address(VirtAddr::new(crate::ulibc::LIBC_BASE));
+    let frame = crate::memory::map_page(&mut mapper, libc_page, user_flags)
+        .ok_or("failed to map libc code")?;
+    let dest = crate::memory::phys_to_virt(frame.start_address());
+    unsafe {
+        core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096);
+        core::ptr::copy_nonoverlapping(libc_code.as_ptr(), dest.as_mut_ptr::<u8>(), libc_code.len().min(4096));
+    }
+
+    let data_page = Page::containing_address(VirtAddr::new(crate::ulibc::LIBC_DATA));
+    let frame = crate::memory::map_page(&mut mapper, data_page, user_rw)
+        .ok_or("failed to map libc data")?;
+    let dest = crate::memory::phys_to_virt(frame.start_address());
+    unsafe {
+        core::ptr::write_bytes(dest.as_mut_ptr::<u8>(), 0, 4096);
+        core::ptr::copy_nonoverlapping(libc_data.as_ptr(), dest.as_mut_ptr::<u8>(), libc_data.len().min(4096));
+    }
+
+    // Create process descriptor with per-process page table
+    let mut proc = UserProcess::new(pid, name);
+    proc.page_table_phys = pml4_phys;
+    proc.entry_point = elf.entry;
+    proc.user_stack_top = USER_STACK_TOP;
+    proc.brk = max_addr;
+
+    let mut table = PROCESS_TABLE.lock();
+    let slot = table.find_slot().ok_or("process table full")?;
+    table.slots[slot] = Some(proc);
+
+    serial_println!("[userspace] isolated process '{}' pid={} cr3={:#x} entry={:#x}",
+        name, pid, pml4_phys, elf.entry);
+
+    Ok(pid)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn create_isolated_process(name: &str, _elf_data: &[u8]) -> Result<u32, &'static str> {
+    Err("isolated processes only on x86_64")
+}
+
+/// Run a program with per-process page table isolation.
+pub fn run_isolated(name: &str) -> Result<(), &'static str> {
+    let elf_data = get_builtin_program(name).ok_or("unknown program")?;
+    let pid = create_isolated_process(name, &elf_data)?;
+    enter_userspace(pid);
+}
+
 /// Look up a built-in user program by name, returning an ELF binary.
 pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
     // U1-U4 programs (raw machine code)
@@ -644,6 +771,7 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "echo"  => Some(crate::ulibc::gen_echo()),
         "wc"    => Some(crate::ulibc::gen_wc()),
         "ls"    => Some(crate::ulibc::gen_ls()),
+        "init"  => Some(crate::ulibc::gen_init()),
         _ => None,
     };
     if let Some(c) = gen_code {
@@ -664,7 +792,7 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         // U6 dynamic linking
         "dynlink-test",
         // Standard user programs
-        "cat", "echo", "wc", "ls",
+        "cat", "echo", "wc", "ls", "init",
     ]
 }
 
@@ -784,7 +912,7 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
     table.slots[slot] = Some(proc);
 
     // Load libc pages for U5 programs
-    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" | "cat" | "echo" | "wc" | "ls");
+    let is_libc_program = matches!(name, "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" | "cat" | "echo" | "wc" | "ls" | "init");
     if is_libc_program {
         ensure_libc_loaded()?;
     }
@@ -1108,13 +1236,16 @@ fn ensure_libc_loaded() -> Result<(), &'static str> {
 /// Flag: set to true when user process has exited.
 static USER_EXITED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
+/// Saved kernel CR3 for restoring after userspace exit.
+static KERNEL_CR3: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
 /// Switch to Ring 3 and start executing user code.
 /// Does NOT return — the user process runs until SYS_EXIT.
-/// After SYS_EXIT, the iret returns to user's jmp$ loop,
-/// and timer/keyboard interrupts resume normal kernel operation.
+/// If the process has its own page table (page_table_phys != 0),
+/// CR3 is switched for true process isolation.
 #[cfg(target_arch = "x86_64")]
 pub fn enter_userspace(pid: u32) -> ! {
-    let (entry, stack, _cr3) = {
+    let (entry, stack, cr3) = {
         let mut table = PROCESS_TABLE.lock();
         let slot = table.find_by_pid(pid).expect("process not found");
         let proc = table.slots[slot].as_mut().unwrap();
@@ -1123,37 +1254,66 @@ pub fn enter_userspace(pid: u32) -> ! {
     };
 
     CURRENT_PID.store(pid, Ordering::SeqCst);
-
-    serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x}", pid, entry, stack);
-
     USER_EXITED.store(false, core::sync::atomic::Ordering::SeqCst);
 
+    // Save kernel CR3 before switching (if process has its own page table)
+    if cr3 != 0 {
+        let current_cr3: u64;
+        unsafe { core::arch::asm!("mov {}, cr3", out(reg) current_cr3); }
+        KERNEL_CR3.store(current_cr3, core::sync::atomic::Ordering::SeqCst);
+        serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x} cr3={:#x} (isolated)",
+            pid, entry, stack, cr3);
+    } else {
+        serial_println!("[userspace] entering ring 3: pid={} entry={:#x} stack={:#x} (shared pt)",
+            pid, entry, stack);
+    }
+
     unsafe {
-        // iretq to Ring 3 — this does NOT return.
-        // When user calls SYS_EXIT, the syscall handler sets USER_EXITED=true
-        // and the user code hits its jmp$ loop. Timer interrupt preempts it
-        // and we check USER_EXITED in the loop below.
-        core::arch::asm!(
-            "push 0x2B",        // SS
-            "push {stack}",     // RSP
-            "push 0x200",       // RFLAGS
-            "push 0x33",        // CS
-            "push {entry}",     // RIP
-            "iretq",
-            stack = in(reg) stack,
-            entry = in(reg) entry,
-            options(noreturn),
-        );
+        if cr3 != 0 {
+            // Switch to per-process page table, then iretq to Ring 3
+            core::arch::asm!(
+                "mov cr3, {cr3}",   // Switch page table
+                "push 0x2B",        // SS
+                "push {stack}",     // RSP
+                "push 0x200",       // RFLAGS
+                "push 0x33",        // CS
+                "push {entry}",     // RIP
+                "iretq",
+                cr3 = in(reg) cr3,
+                stack = in(reg) stack,
+                entry = in(reg) entry,
+                options(noreturn),
+            );
+        } else {
+            // Legacy path: shared kernel page table
+            core::arch::asm!(
+                "push 0x2B",        // SS
+                "push {stack}",     // RSP
+                "push 0x200",       // RFLAGS
+                "push 0x33",        // CS
+                "push {entry}",     // RIP
+                "iretq",
+                stack = in(reg) stack,
+                entry = in(reg) entry,
+                options(noreturn),
+            );
+        }
     }
 }
 
 /// Mark that userspace process has exited.
-/// Called from SYS_EXIT handler.
+/// Called from SYS_EXIT handler. Restores kernel CR3 if needed.
 pub fn return_to_kernel() {
     USER_EXITED.store(true, core::sync::atomic::Ordering::SeqCst);
     CURRENT_PID.store(0, Ordering::SeqCst);
-    // Don't try to restore kernel stack — just return from syscall.
-    // The user code's jmp$ loop + timer interrupt will handle the rest.
+
+    // Restore kernel page table if we switched away
+    let saved_cr3 = KERNEL_CR3.load(core::sync::atomic::Ordering::SeqCst);
+    if saved_cr3 != 0 {
+        unsafe { core::arch::asm!("mov cr3, {}", in(reg) saved_cr3); }
+        KERNEL_CR3.store(0, core::sync::atomic::Ordering::SeqCst);
+        serial_println!("[userspace] restored kernel CR3");
+    }
 }
 
 /// Check if userspace process has finished.

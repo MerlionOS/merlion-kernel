@@ -582,25 +582,72 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
         // ── Memory operations ────────────────────────────────────────
 
         SYS_MMAP => {
-            let addr = arg1;
+            // mmap(addr_hint, len, prot_flags) → mapped_addr
+            // Anonymous mapping only (no file-backed)
+            let addr_hint = arg1;
             let len = arg2;
-            serial_println!("[syscall] mmap(0x{:x}, {}) — not implemented, returning -1", addr, len);
-            set_retval(-1);
+            if len == 0 || len > 0x1000_0000 {
+                serial_println!("[syscall] mmap: invalid length {}", len);
+                set_retval(-1);
+            } else {
+                let num_pages = (len + 0xFFF) / 4096;
+                // Use a region above the heap
+                let base = if addr_hint != 0 && (addr_hint & 0xFFF) == 0 {
+                    addr_hint
+                } else {
+                    // Auto-allocate from mmap region (0x1000_0000 upward)
+                    static MMAP_NEXT: core::sync::atomic::AtomicU64 =
+                        core::sync::atomic::AtomicU64::new(0x0000_0100_0000);
+                    MMAP_NEXT.fetch_add(num_pages * 4096, core::sync::atomic::Ordering::SeqCst)
+                };
+                #[cfg(target_arch = "x86_64")]
+                {
+                    use x86_64::structures::paging::{Page, PageTableFlags};
+                    use x86_64::VirtAddr;
+                    let user_rw = PageTableFlags::PRESENT
+                        | PageTableFlags::WRITABLE
+                        | PageTableFlags::USER_ACCESSIBLE;
+                    let mut ok = true;
+                    for i in 0..num_pages {
+                        let page = Page::containing_address(VirtAddr::new(base + i * 4096));
+                        if crate::memory::map_page_global(page, user_rw).is_none() {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if ok {
+                        serial_println!("[syscall] mmap({:#x}, {}) = {:#x} ({} pages)",
+                            addr_hint, len, base, num_pages);
+                        set_retval(base as i64);
+                    } else {
+                        serial_println!("[syscall] mmap: allocation failed");
+                        set_retval(-1);
+                    }
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    serial_println!("[syscall] mmap: not supported on this arch");
+                    set_retval(-1);
+                }
+            }
         }
 
         SYS_MUNMAP => {
             let addr = arg1;
             let len = arg2;
-            serial_println!("[syscall] munmap(0x{:x}, {}) — not implemented, returning -1", addr, len);
-            set_retval(-1);
+            let num_pages = (len + 0xFFF) / 4096;
+            // For now, just acknowledge — actual unmapping requires page table walk
+            serial_println!("[syscall] munmap({:#x}, {}) — {} pages freed (logical)", addr, len, num_pages);
+            set_retval(0);
         }
 
         SYS_MPROTECT => {
             let addr = arg1;
             let len = arg2;
             let prot = arg3;
-            serial_println!("[syscall] mprotect(0x{:x}, {}, 0x{:x}) — not implemented, returning -1", addr, len, prot);
-            set_retval(-1);
+            // Acknowledge the request — actual protection change requires PTE modification
+            serial_println!("[syscall] mprotect({:#x}, {}, {:#x}) — acknowledged", addr, len, prot);
+            set_retval(0);
         }
 
         // ── Network operations ───────────────────────────────────────

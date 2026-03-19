@@ -1136,3 +1136,69 @@ pub fn gen_ls() -> Vec<u8> {
 
     c
 }
+
+/// Generate "init" program: PID 1 init process.
+/// Prints banner, gets PID, prints uptime, then exits.
+pub fn gen_init() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // Banner
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // getpid
+    emit_call_libc(&mut c, FN_GETPID);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // uptime
+    let msg3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_call_libc(&mut c, FN_GETTIME);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    let msg4_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // "init complete" message
+    let msg5_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // exit(0)
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg1_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"[init] MerlionOS init (PID 1) starting...\n\0");
+
+    let msg2_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"[init] PID: \0");
+
+    let msg3_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"\n[init] uptime: \0");
+
+    let msg4_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b" seconds\n\0");
+
+    let msg5_addr = text_base + c.len() as u64;
+    c.extend_from_slice(b"[init] system ready - returning to kernel shell\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1_addr.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2_addr.to_le_bytes());
+    c[msg3_fixup..msg3_fixup+8].copy_from_slice(&msg3_addr.to_le_bytes());
+    c[msg4_fixup..msg4_fixup+8].copy_from_slice(&msg4_addr.to_le_bytes());
+    c[msg5_fixup..msg5_fixup+8].copy_from_slice(&msg5_addr.to_le_bytes());
+
+    c
+}

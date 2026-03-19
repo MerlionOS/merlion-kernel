@@ -70,10 +70,17 @@ extern "x86-interrupt" fn page_fault_handler(
     use x86_64::registers::control::Cr2;
     let fault_addr = Cr2::read();
 
+    let addr = fault_addr.as_u64();
+
     // Try demand paging first
-    if let Some(addr) = fault_addr.as_u64().into() {
-        if crate::paging::handle_page_fault(addr) {
-            return; // successfully mapped, resume execution
+    if crate::paging::handle_page_fault(addr) {
+        return;
+    }
+
+    // Try Copy-on-Write handling (write fault on shared page)
+    if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) {
+        if crate::cow::handle_cow_fault(addr).is_some() {
+            return;
         }
     }
 
@@ -82,6 +89,16 @@ extern "x86-interrupt" fn page_fault_handler(
     serial_println!("  Error code: {:?}", error_code);
     serial_println!("{:#?}", stack_frame);
     klog_println!("PAGE FAULT at {:?}, error: {:?}", fault_addr, error_code);
+
+    // If user process caused the fault, kill it instead of panicking
+    if error_code.contains(PageFaultErrorCode::USER_MODE) {
+        serial_println!("[userspace] segfault in user process — terminating");
+        if let Some(pid) = crate::userspace::current_process() {
+            crate::userspace::exit_process(pid, -11); // SIGSEGV
+            crate::userspace::return_to_kernel();
+            return;
+        }
+    }
 
     panic!("page fault at {:?}", fault_addr);
 }

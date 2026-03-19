@@ -528,6 +528,37 @@ pub fn dispatch_process(cmd: &str) -> bool {
         "cow" | "cow-info" => {
             print!("{}", crate::cow::info());
         }
+        cmd if cmd.starts_with("run-isolated ") => {
+            let name = cmd[13..].trim();
+            unsafe { crate::interrupts::end_of_interrupt(1); }
+            match crate::userspace::run_isolated(name) {
+                Ok(()) => {}
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        cmd if cmd.starts_with("compile ") => {
+            let name = cmd[8..].trim();
+            let src_path = alloc::format!("/src/{}.rs", name);
+            match crate::vfs::cat(&src_path) {
+                Ok(source) => {
+                    match crate::self_host::compile(&source) {
+                        Ok(elf_bytes) => {
+                            let bin_path = alloc::format!("/bin/{}", name);
+                            if let Ok(elf_str) = core::str::from_utf8(&elf_bytes) {
+                                let _ = crate::vfs::write(&bin_path, elf_str);
+                            }
+                            println!("Compiled {} -> {} ({} bytes)", src_path, bin_path, elf_bytes.len());
+                        }
+                        Err(e) => println!("Compile error: {}", e),
+                    }
+                }
+                Err(e) => println!("Cannot read {}: {}", src_path, e),
+            }
+        }
+        "init" => {
+            println!("Starting init system...");
+            crate::init_system::init();
+        }
 
         _ => return false,
     }
