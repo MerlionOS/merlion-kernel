@@ -1,12 +1,41 @@
 /// VGA text mode (mode 3) console with scrolling and cursor.
 /// 80 columns x 25 rows. Each cell is 2 bytes: [ascii, attribute].
+///
+/// Under UEFI/Limine boot, VGA text mode is not available. Writes are
+/// silently discarded (serial output is always available as fallback).
+/// The VGA buffer address is 0xB8000 (physical) under BIOS boot.
+/// Under Limine with HHDM, it must be accessed at HHDM_OFFSET + 0xB8000.
 
 use core::fmt;
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use spin::Mutex;
 
-const VGA_BUFFER: usize = 0xB8000;
+const VGA_BUFFER_PHYS: usize = 0xB8000;
 const WIDTH: usize = 80;
 const HEIGHT: usize = 25;
+
+/// Whether VGA text mode is available (false under UEFI/Limine).
+static VGA_AVAILABLE: AtomicBool = AtomicBool::new(true);
+
+/// Effective VGA buffer address (may be HHDM-adjusted or 0 if unavailable).
+static VGA_BUFFER_ADDR: AtomicU64 = AtomicU64::new(VGA_BUFFER_PHYS as u64);
+
+/// Disable VGA text mode (call when booting via UEFI/Limine with no VGA).
+pub fn disable_vga() {
+    VGA_AVAILABLE.store(false, Ordering::SeqCst);
+    VGA_BUFFER_ADDR.store(0, Ordering::SeqCst);
+}
+
+/// Set the VGA buffer address (e.g., HHDM_OFFSET + 0xB8000 for Limine).
+pub fn set_vga_address(addr: u64) {
+    VGA_BUFFER_ADDR.store(addr, Ordering::SeqCst);
+    VGA_AVAILABLE.store(true, Ordering::SeqCst);
+}
+
+/// Check if VGA text mode is available.
+pub fn is_available() -> bool {
+    VGA_AVAILABLE.load(Ordering::SeqCst)
+}
 
 /// VGA color attributes.
 #[allow(dead_code)]
@@ -52,7 +81,12 @@ impl Writer {
     }
 
     fn buffer(&self) -> *mut u8 {
-        VGA_BUFFER as *mut u8
+        let addr = VGA_BUFFER_ADDR.load(Ordering::Relaxed);
+        addr as *mut u8
+    }
+
+    fn is_active(&self) -> bool {
+        VGA_AVAILABLE.load(Ordering::Relaxed)
     }
 
     pub fn set_attr(&mut self, attr: u8) {
@@ -60,6 +94,7 @@ impl Writer {
     }
 
     pub fn clear(&mut self) {
+        if !self.is_active() { return; }
         for i in 0..(WIDTH * HEIGHT) {
             unsafe {
                 self.buffer().add(i * 2).write_volatile(b' ');
@@ -72,6 +107,7 @@ impl Writer {
     }
 
     pub fn write_byte(&mut self, byte: u8) {
+        if !self.is_active() { return; }
         match byte {
             b'\n' => self.newline(),
             b'\x08' => {
@@ -93,6 +129,7 @@ impl Writer {
     }
 
     fn put_char(&self, row: usize, col: usize, byte: u8) {
+        if !self.is_active() { return; }
         let offset = (row * WIDTH + col) * 2;
         unsafe {
             self.buffer().add(offset).write_volatile(byte);
@@ -110,6 +147,7 @@ impl Writer {
     }
 
     fn scroll(&mut self) {
+        if !self.is_active() { return; }
         // Move rows 1..HEIGHT up by one
         for row in 1..HEIGHT {
             for col in 0..WIDTH {
@@ -130,6 +168,7 @@ impl Writer {
     }
 
     fn update_cursor(&self) {
+        if !VGA_AVAILABLE.load(Ordering::Relaxed) { return; }
         let pos = (self.row * WIDTH + self.col) as u16;
         unsafe {
             use x86_64::instructions::port::Port;

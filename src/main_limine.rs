@@ -172,8 +172,13 @@ extern "C" fn _start() -> ! {
 
     // Phase 1: Serial output (works without memory setup)
     merlion_kernel::serial::SERIAL1.lock().init();
-    merlion_kernel::serial_println!("MerlionOS v77.0.0 — Born for AI. Built by AI.");
+    merlion_kernel::serial_println!("{}", merlion_kernel::version::banner());
     merlion_kernel::serial_println!("[limine] Booting via Limine UEFI...");
+
+    // Disable VGA text mode — UEFI doesn't provide VGA text buffer at 0xB8000.
+    // All console output goes to serial. The framebuffer console (fbconsole)
+    // handles pixel-based display if a GOP framebuffer is available.
+    merlion_kernel::vga::disable_vga();
 
     // Phase 2: Read HHDM offset from Limine response
     let hhdm_offset = unsafe {
