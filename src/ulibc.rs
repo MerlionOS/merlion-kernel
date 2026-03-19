@@ -1861,3 +1861,208 @@ pub fn gen_game() -> Vec<u8> {
     c[m5_fixup..m5_fixup+8].copy_from_slice(&m5.to_le_bytes());
     c
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  GPU & INFERENCE PROGRAMS
+// ═══════════════════════════════════════════════════════════════════
+
+/// Generate "gpu-info" program: queries GPU compute backend and prints info.
+pub fn gen_gpu_info() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // SYS_GPU_INFO(0, 0) → prints to console
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]); // xor rdi, rdi
+    c.extend_from_slice(&[0x48, 0x31, 0xF6]); // xor rsi, rsi
+    emit_raw_syscall(&mut c, 220);
+
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // SYS_LLM_INFO(0, 0) → prints LLM info
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    c.extend_from_slice(&[0x48, 0x31, 0xF6]);
+    emit_raw_syscall(&mut c, 227);
+
+    let m3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64; c.extend_from_slice(b"=== GPU Compute Info ===\n\0");
+    let m2 = text_base + c.len() as u64; c.extend_from_slice(b"\n=== LLM Engine Info ===\n\0");
+    let m3 = text_base + c.len() as u64; c.extend_from_slice(b"\n=== Done ===\n\0");
+
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c[m3_fixup..m3_fixup+8].copy_from_slice(&m3.to_le_bytes());
+    c
+}
+
+/// Generate "gpu-matmul" program: runs a matrix multiply on GPU.
+pub fn gen_gpu_matmul() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Allocate buffer for 4x4 matrix (64 bytes = 16 i32)
+    emit_mov_rdi_imm64(&mut c, 256); // buffer for input
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (input_ptr)
+
+    // gpu_matmul(size=4, input_ptr, 0) via SYS_GPU_MATMUL (223)
+    emit_mov_rdi_imm64(&mut c, 4); // 4x4 matrix
+    c.extend_from_slice(&[0x4C, 0x89, 0xE6]); // mov rsi, r12 (input)
+    c.extend_from_slice(&[0x48, 0x31, 0xD2]); // xor rdx, rdx (no output buf)
+    emit_raw_syscall(&mut c, 223);
+
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64; c.extend_from_slice(b"gpu-matmul: running 4x4 matrix multiply on GPU...\n\0");
+    let m2 = text_base + c.len() as u64; c.extend_from_slice(b"gpu-matmul: complete!\n\0");
+
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c
+}
+
+/// Generate "nn-infer" program: runs neural network inference from userspace.
+pub fn gen_nn_infer() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Allocate input buffer (16 i32 values = 64 bytes)
+    emit_mov_rdi_imm64(&mut c, 64);
+    emit_call_libc(&mut c, FN_MALLOC);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (input_buf)
+
+    // Fill with test values via memset (simplified: all zeros)
+    c.extend_from_slice(&[0x4C, 0x89, 0xE7]); // mov rdi, r12
+    emit_mov_rsi_imm64(&mut c, 0x01); // value = 1 (each byte)
+    emit_mov_rdx_imm64(&mut c, 64);
+    emit_call_libc(&mut c, FN_MEMSET);
+
+    // nn_infer("example", 7, input_buf) via SYS_NN_INFER (224)
+    let model_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // model name
+    emit_mov_rsi_imm64(&mut c, 7); // name len "example"
+    c.extend_from_slice(&[0x4C, 0x89, 0xE2]); // mov rdx, r12 (input)
+    emit_raw_syscall(&mut c, 224);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (result)
+
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    let m3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64; c.extend_from_slice(b"nn-infer: running neural network inference...\n\0");
+    let model = text_base + c.len() as u64; c.extend_from_slice(b"example\0");
+    let m2 = text_base + c.len() as u64; c.extend_from_slice(b"nn-infer: output = \0");
+    let m3 = text_base + c.len() as u64; c.extend_from_slice(b"\nnn-infer: done!\n\0");
+
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[model_fixup..model_fixup+8].copy_from_slice(&model.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c[m3_fixup..m3_fixup+8].copy_from_slice(&m3.to_le_bytes());
+    c
+}
+
+/// Generate "llm-chat" program: sends a prompt to the LLM and prints response.
+pub fn gen_llm_chat() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Get start time
+    emit_call_libc(&mut c, FN_GETTIME);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax
+
+    // llm_generate(prompt, prompt_len, max_tokens) via SYS_LLM_GENERATE (226)
+    let prompt_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0); // prompt ptr
+    let promptlen_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0); // prompt len
+    emit_mov_rdx_imm64(&mut c, 32); // max_tokens
+    emit_raw_syscall(&mut c, 226);
+    c.extend_from_slice(&[0x49, 0x89, 0xC5]); // mov r13, rax (bytes generated)
+
+    // Get end time
+    emit_call_libc(&mut c, FN_GETTIME);
+    c.extend_from_slice(&[0x4C, 0x29, 0xE0]); // sub rax, r12 (elapsed)
+    c.extend_from_slice(&[0x49, 0x89, 0xC6]); // mov r14, rax
+
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    let m3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xF7]); // mov rdi, r14
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    let m4_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64;
+    c.extend_from_slice(b"llm-chat: sending prompt to LLM engine...\n\0");
+    let prompt = text_base + c.len() as u64;
+    let prompt_str = b"What is MerlionOS?";
+    let prompt_len = prompt_str.len() as u64;
+    c.extend_from_slice(prompt_str);
+    c.push(0);
+    let m2 = text_base + c.len() as u64;
+    c.extend_from_slice(b"\nllm-chat: generated \0");
+    let m3 = text_base + c.len() as u64;
+    c.extend_from_slice(b" chars in \0");
+    let m4 = text_base + c.len() as u64;
+    c.extend_from_slice(b" seconds\n\0");
+
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[prompt_fixup..prompt_fixup+8].copy_from_slice(&prompt.to_le_bytes());
+    c[promptlen_fixup..promptlen_fixup+8].copy_from_slice(&prompt_len.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c[m3_fixup..m3_fixup+8].copy_from_slice(&m3.to_le_bytes());
+    c[m4_fixup..m4_fixup+8].copy_from_slice(&m4.to_le_bytes());
+    c
+}

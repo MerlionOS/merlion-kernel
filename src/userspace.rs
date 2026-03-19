@@ -782,6 +782,11 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "beep"        => Some(crate::ulibc::gen_beep()),
         "desktop"     => Some(crate::ulibc::gen_desktop()),
         "game"        => Some(crate::ulibc::gen_game()),
+        // GPU & Inference
+        "gpu-info"    => Some(crate::ulibc::gen_gpu_info()),
+        "gpu-matmul"  => Some(crate::ulibc::gen_gpu_matmul()),
+        "nn-infer"    => Some(crate::ulibc::gen_nn_infer()),
+        "llm-chat"    => Some(crate::ulibc::gen_llm_chat()),
         _ => None,
     };
     if let Some(c) = gen_code {
@@ -806,6 +811,8 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         // Applications
         "ush", "fwrite-test", "paint", "wget-user", "pkg-install",
         "test-suite", "beep", "desktop", "game",
+        // GPU & Inference
+        "gpu-info", "gpu-matmul", "nn-infer", "llm-chat",
     ]
 }
 
@@ -929,7 +936,8 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
         "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" |
         "cat" | "echo" | "wc" | "ls" | "init" |
         "ush" | "fwrite-test" | "paint" | "wget-user" | "pkg-install" |
-        "test-suite" | "beep" | "desktop" | "game"
+        "test-suite" | "beep" | "desktop" | "game" |
+        "gpu-info" | "gpu-matmul" | "nn-infer" | "llm-chat"
     );
     if is_libc_program {
         ensure_libc_loaded()?;

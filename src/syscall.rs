@@ -162,6 +162,16 @@ const SYS_WIN_PIXEL: u64 = 211;
 const SYS_WIN_TEXT: u64 = 212;
 const SYS_WIN_CLOSE: u64 = 213;
 
+// GPU Compute & Inference (220-229)
+const SYS_GPU_INFO: u64 = 220;
+const SYS_GPU_ALLOC: u64 = 221;
+const SYS_GPU_FREE: u64 = 222;
+const SYS_GPU_MATMUL: u64 = 223;
+const SYS_NN_INFER: u64 = 224;
+const SYS_LLM_LOAD: u64 = 225;
+const SYS_LLM_GENERATE: u64 = 226;
+const SYS_LLM_INFO: u64 = 227;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -1083,6 +1093,162 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 }
             } else {
                 set_retval(-1);
+            }
+        }
+
+        // ── GPU Compute & Inference ────────────────────────────────
+
+        SYS_GPU_INFO => {
+            // gpu_info(buf_ptr, max_len) → bytes_written
+            let buf_ptr = arg1;
+            let max_len = arg2;
+            let mut info = crate::gpu::gpu_info();
+            info.push('\n');
+            info.push_str(&crate::gpu_detect::scan_all_gpus());
+            if buf_ptr != 0 {
+                let n = unsafe { write_user_buf(buf_ptr, info.as_bytes(), max_len) };
+                set_retval(n as i64);
+            } else {
+                serial_println!("[user] {}", info);
+                println!("[user] {}", info);
+                set_retval(info.len() as i64);
+            }
+        }
+
+        SYS_GPU_ALLOC => {
+            // gpu_alloc(size) → buffer_id
+            let size = arg1 as usize;
+            let id = crate::gpu::alloc_buffer(size);
+            serial_println!("[syscall] gpu_alloc({}) = {}", size, id);
+            set_retval(id as i64);
+        }
+
+        SYS_GPU_FREE => {
+            // gpu_free(buffer_id) → 0
+            let id = arg1 as u32;
+            crate::gpu::free_buffer(id);
+            serial_println!("[syscall] gpu_free({})", id);
+            set_retval(0);
+        }
+
+        SYS_GPU_MATMUL => {
+            // gpu_matmul(size, input_ptr, output_ptr) → 0
+            let size = arg1 as usize;
+            let n = size;
+            if n > 0 && n <= 64 {
+                // Allocate GPU buffers for A, B, C
+                let buf_a = crate::gpu::alloc_buffer(n * n);
+                let buf_b = crate::gpu::alloc_buffer(n * n);
+                let buf_c = crate::gpu::alloc_buffer(n * n);
+
+                // Fill A and B with test data
+                let mut a_data = alloc::vec![0i32; n * n];
+                let mut b_data = alloc::vec![0i32; n * n];
+                for i in 0..n*n {
+                    a_data[i] = (i as i32 + 1) * 256; // fixed-point scale
+                    b_data[i] = if i / n == i % n { 256 } else { 0 }; // identity matrix
+                }
+                crate::gpu::write_buffer(buf_a, &a_data);
+                crate::gpu::write_buffer(buf_b, &b_data);
+
+                // Submit matmul job
+                let job_id = crate::gpu::submit_job(
+                    crate::gpu::ComputeOp::MatMul,
+                    &[buf_a, buf_b],
+                    buf_c,
+                );
+
+                // Poll until complete
+                crate::gpu::poll_jobs();
+                serial_println!("[syscall] gpu_matmul({}x{}) job={} complete", n, n, job_id);
+
+                crate::gpu::free_buffer(buf_a);
+                crate::gpu::free_buffer(buf_b);
+                crate::gpu::free_buffer(buf_c);
+                set_retval(0);
+            } else {
+                serial_println!("[syscall] gpu_matmul: invalid size {}", n);
+                set_retval(-1);
+            }
+        }
+
+        SYS_NN_INFER => {
+            // nn_infer(model_name_ptr, model_name_len, input_ptr) → output_value
+            // Runs neural network inference on a registered model
+            if let Some(model_name) = read_user_str(arg1, arg2) {
+                // Read input data from user memory (up to 64 i32 values)
+                let input_ptr = arg3;
+                let mut input_data = alloc::vec![0i32; 16];
+                if input_ptr != 0 {
+                    let bytes = unsafe {
+                        core::slice::from_raw_parts(input_ptr as *const u8, 64)
+                    };
+                    for i in 0..16 {
+                        input_data[i] = i32::from_le_bytes([
+                            bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]
+                        ]);
+                    }
+                }
+                match crate::nn_inference::run_inference(&model_name, &input_data) {
+                    Ok(output) => {
+                        let result = if output.is_empty() { 0 } else { output[0] };
+                        serial_println!("[syscall] nn_infer({}) = {}", model_name, result);
+                        set_retval(result as i64);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] nn_infer({}) failed: {}", model_name, e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        SYS_LLM_LOAD => {
+            // llm_load(path_ptr, path_len) → 0 or -1
+            if let Some(path) = read_user_str(arg1, arg2) {
+                match crate::llm::load(&path) {
+                    Ok(()) => {
+                        serial_println!("[syscall] llm_load({}) ok", path);
+                        set_retval(0);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] llm_load({}) failed: {}", path, e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        SYS_LLM_GENERATE => {
+            // llm_generate(prompt_ptr, prompt_len, max_tokens) → bytes_written
+            // Generates text from prompt, writes to serial + VGA
+            if let Some(prompt) = read_user_str(arg1, arg2) {
+                let max_tokens = if arg3 == 0 { 32 } else { arg3 as u32 };
+                let output = crate::llm::generate_text(&prompt, max_tokens);
+                serial_println!("[user] LLM: {}", output);
+                println!("[user] LLM: {}", output);
+                set_retval(output.len() as i64);
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        SYS_LLM_INFO => {
+            // llm_info(buf_ptr, max_len) → bytes_written
+            let buf_ptr = arg1;
+            let max_len = arg2;
+            let info = crate::llm::llm_info();
+            if buf_ptr != 0 {
+                let n = unsafe { write_user_buf(buf_ptr, info.as_bytes(), max_len) };
+                set_retval(n as i64);
+            } else {
+                serial_println!("[user] {}", info);
+                println!("[user] {}", info);
+                set_retval(info.len() as i64);
             }
         }
 
