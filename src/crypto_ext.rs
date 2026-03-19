@@ -3,6 +3,7 @@
 /// X.509 certificate parsing, and a random number generator.
 
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 use alloc::format;
 use spin::Mutex;
@@ -670,36 +671,254 @@ pub fn init() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Diffie-Hellman Key Exchange (simplified)
+//  Big Integer Arithmetic (2048-bit, for DH Group 14)
 // ═══════════════════════════════════════════════════════════════════
 
-/// DH group 14 prime (RFC 3526) — simplified to 64-bit for no_std kernel.
-/// A real implementation would use 2048-bit integers; this demonstrates
-/// the protocol flow with our existing mod_pow.
-const DH_PRIME: u64 = 0xFFFF_FFFF_FFFF_FFC5; // large 64-bit prime
-const DH_GENERATOR: u64 = 2;
+/// Fixed-size 2048-bit unsigned integer stored as 32 x u64 limbs (little-endian).
+#[derive(Clone)]
+pub struct BigUint {
+    limbs: [u64; 32],
+}
 
-/// Diffie-Hellman keypair.
+impl BigUint {
+    /// Zero.
+    pub const fn zero() -> Self {
+        Self { limbs: [0u64; 32] }
+    }
+
+    /// From a small u64 value.
+    pub fn from_u64(v: u64) -> Self {
+        let mut n = Self::zero();
+        n.limbs[0] = v;
+        n
+    }
+
+    /// From big-endian bytes (up to 256 bytes = 2048 bits).
+    pub fn from_be_bytes(bytes: &[u8]) -> Self {
+        let mut n = Self::zero();
+        let len = bytes.len().min(256);
+        for (i, &b) in bytes[..len].iter().rev().enumerate() {
+            let limb_idx = i / 8;
+            let byte_idx = i % 8;
+            if limb_idx < 32 {
+                n.limbs[limb_idx] |= (b as u64) << (byte_idx * 8);
+            }
+        }
+        n
+    }
+
+    /// To big-endian bytes (256 bytes).
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        let mut out = vec![0u8; 256];
+        for (i, byte) in out.iter_mut().rev().enumerate() {
+            let limb_idx = i / 8;
+            let byte_idx = i % 8;
+            if limb_idx < 32 {
+                *byte = (self.limbs[limb_idx] >> (byte_idx * 8)) as u8;
+            }
+        }
+        // Strip leading zeros (keep at least 1 byte)
+        let first_nonzero = out.iter().position(|&b| b != 0).unwrap_or(255);
+        out[first_nonzero..].to_vec()
+    }
+
+    /// Check if zero.
+    pub fn is_zero(&self) -> bool {
+        self.limbs.iter().all(|&l| l == 0)
+    }
+
+    /// Test bit at position `bit`.
+    pub fn bit(&self, bit: usize) -> bool {
+        let limb = bit / 64;
+        let pos = bit % 64;
+        if limb >= 32 { return false; }
+        (self.limbs[limb] >> pos) & 1 == 1
+    }
+
+    /// Number of significant bits.
+    pub fn bit_len(&self) -> usize {
+        for i in (0..32).rev() {
+            if self.limbs[i] != 0 {
+                return i * 64 + (64 - self.limbs[i].leading_zeros() as usize);
+            }
+        }
+        0
+    }
+
+    /// Addition: self + other, returns (result, carry).
+    pub fn add(&self, other: &BigUint) -> BigUint {
+        let mut result = BigUint::zero();
+        let mut carry: u64 = 0;
+        for i in 0..32 {
+            let (s1, c1) = self.limbs[i].overflowing_add(other.limbs[i]);
+            let (s2, c2) = s1.overflowing_add(carry);
+            result.limbs[i] = s2;
+            carry = (c1 as u64) + (c2 as u64);
+        }
+        result
+    }
+
+    /// Subtraction: self - other (assumes self >= other).
+    pub fn sub(&self, other: &BigUint) -> BigUint {
+        let mut result = BigUint::zero();
+        let mut borrow: u64 = 0;
+        for i in 0..32 {
+            let (s1, b1) = self.limbs[i].overflowing_sub(other.limbs[i]);
+            let (s2, b2) = s1.overflowing_sub(borrow);
+            result.limbs[i] = s2;
+            borrow = (b1 as u64) + (b2 as u64);
+        }
+        result
+    }
+
+    /// Compare: -1, 0, +1.
+    pub fn cmp(&self, other: &BigUint) -> i32 {
+        for i in (0..32).rev() {
+            if self.limbs[i] > other.limbs[i] { return 1; }
+            if self.limbs[i] < other.limbs[i] { return -1; }
+        }
+        0
+    }
+
+    /// Left shift by 1 bit.
+    pub fn shl1(&self) -> BigUint {
+        let mut result = BigUint::zero();
+        let mut carry = 0u64;
+        for i in 0..32 {
+            result.limbs[i] = (self.limbs[i] << 1) | carry;
+            carry = self.limbs[i] >> 63;
+        }
+        result
+    }
+
+    /// Right shift by 1 bit.
+    pub fn shr1(&self) -> BigUint {
+        let mut result = BigUint::zero();
+        let mut carry = 0u64;
+        for i in (0..32).rev() {
+            result.limbs[i] = (self.limbs[i] >> 1) | (carry << 63);
+            carry = self.limbs[i] & 1;
+        }
+        result
+    }
+
+    /// Modular reduction: self mod modulus (using repeated subtraction for simplicity
+    /// when self < 2*modulus, otherwise shift-subtract division).
+    pub fn mod_reduce(&self, modulus: &BigUint) -> BigUint {
+        if self.cmp(modulus) < 0 {
+            return self.clone();
+        }
+        // Binary long division
+        let mut remainder = BigUint::zero();
+        let bits = self.bit_len();
+        for i in (0..bits).rev() {
+            remainder = remainder.shl1();
+            if self.bit(i) {
+                remainder.limbs[0] |= 1;
+            }
+            if remainder.cmp(modulus) >= 0 {
+                remainder = remainder.sub(modulus);
+            }
+        }
+        remainder
+    }
+
+    /// Modular multiplication: (a * b) mod m.
+    /// Uses shift-and-add to avoid overflow.
+    pub fn mul_mod(a: &BigUint, b: &BigUint, m: &BigUint) -> BigUint {
+        let mut result = BigUint::zero();
+        let mut a_shifted = a.mod_reduce(m);
+        let bits = b.bit_len();
+        for i in 0..bits {
+            if b.bit(i) {
+                result = result.add(&a_shifted).mod_reduce(m);
+            }
+            a_shifted = a_shifted.shl1().mod_reduce(m);
+        }
+        result
+    }
+
+    /// Modular exponentiation: base^exp mod modulus.
+    /// Square-and-multiply algorithm.
+    pub fn mod_pow(base: &BigUint, exp: &BigUint, modulus: &BigUint) -> BigUint {
+        if modulus.is_zero() { return BigUint::zero(); }
+        let mut result = BigUint::from_u64(1);
+        let mut b = base.mod_reduce(modulus);
+        let bits = exp.bit_len();
+        for i in 0..bits {
+            if exp.bit(i) {
+                result = BigUint::mul_mod(&result, &b, modulus);
+            }
+            b = BigUint::mul_mod(&b, &b, modulus);
+        }
+        result
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  Diffie-Hellman Key Exchange (RFC 3526 Group 14, 2048-bit)
+// ═══════════════════════════════════════════════════════════════════
+
+/// RFC 3526 Group 14: 2048-bit MODP prime.
+/// p = 2^2048 - 2^1984 - 1 + 2^64 * { [2^1918 pi] + 124476 }
+const DH_GROUP14_PRIME_BYTES: [u8; 256] = [
+    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF, 0xC9,0x0F,0xDA,0xA2,0x21,0x68,0xC2,0x34,
+    0xC4,0xC6,0x62,0x8B,0x80,0xDC,0x1C,0xD1, 0x29,0x02,0x4E,0x08,0x8A,0x67,0xCC,0x74,
+    0x02,0x0B,0xBE,0xA6,0x3B,0x13,0x9B,0x22, 0x51,0x4A,0x08,0x79,0x8E,0x34,0x04,0xDD,
+    0xEF,0x95,0x19,0xB3,0xCD,0x3A,0x43,0x1B, 0x30,0x2B,0x0A,0x6D,0xF2,0x5F,0x14,0x37,
+    0x4F,0xE1,0x35,0x6D,0x6D,0x51,0xC2,0x45, 0xE4,0x85,0xB5,0x76,0x62,0x5E,0x7E,0xC6,
+    0xF4,0x4C,0x42,0xE9,0xA6,0x37,0xED,0x6B, 0x0B,0xFF,0x5C,0xB6,0xF4,0x06,0xB7,0xED,
+    0xEE,0x38,0x6B,0xFB,0x5A,0x89,0x9F,0xA5, 0xAE,0x9F,0x24,0x11,0x7C,0x4B,0x1F,0xE6,
+    0x49,0x28,0x66,0x51,0xEC,0xE4,0x5B,0x3D, 0xC2,0x00,0x7C,0xB8,0xA1,0x63,0xBF,0x05,
+    0x98,0xDA,0x48,0x36,0x1C,0x55,0xD3,0x9A, 0x69,0x16,0x3F,0xA8,0xFD,0x24,0xCF,0x5F,
+    0x83,0x65,0x5D,0x23,0xDC,0xA3,0xAD,0x96, 0x1C,0x62,0xF3,0x56,0x20,0x85,0x52,0xBB,
+    0x9E,0xD5,0x29,0x07,0x70,0x96,0x96,0x6D, 0x67,0x0C,0x35,0x4E,0x4A,0xBC,0x98,0x04,
+    0xF1,0x74,0x6C,0x08,0xCA,0x18,0x21,0x7C, 0x32,0x90,0x5E,0x46,0x2E,0x36,0xCE,0x3B,
+    0xE3,0x9E,0x77,0x2C,0x18,0x0E,0x86,0x03, 0x9B,0x27,0x83,0xA2,0xEC,0x07,0xA2,0x8F,
+    0xB5,0xC5,0x5D,0xF0,0x6F,0x4C,0x52,0xC9, 0xDE,0x2B,0xCB,0xF6,0x95,0x58,0x17,0x18,
+    0x39,0x95,0x49,0x7C,0xEA,0x95,0x6A,0xE5, 0x15,0xD2,0x26,0x18,0x98,0xFA,0x05,0x10,
+    0x15,0x72,0x8E,0x5A,0x8A,0xAC,0xAA,0x68, 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+];
+
+const DH_GENERATOR_VAL: u64 = 2;
+
+/// Diffie-Hellman keypair (2048-bit).
 pub struct DhKeypair {
-    pub private_key: u64,
-    pub public_key: u64,
+    pub private_key: BigUint,
+    pub public_key: BigUint,
+    /// Public key as big-endian bytes (for SSH wire format).
+    pub public_bytes: Vec<u8>,
 }
 
-/// Generate a DH keypair: private = random, public = g^private mod p.
+/// Generate a 2048-bit DH keypair using RFC 3526 Group 14.
+/// private = 256-bit random, public = g^private mod p.
 pub fn dh_generate_keypair() -> DhKeypair {
-    let private_key = csprng_u64() | 1; // ensure odd
-    let public_key = mod_pow(DH_GENERATOR, private_key, DH_PRIME);
-    DhKeypair { private_key, public_key }
+    let p = BigUint::from_be_bytes(&DH_GROUP14_PRIME_BYTES);
+    let g = BigUint::from_u64(DH_GENERATOR_VAL);
+
+    // Generate 256-bit random private key (sufficient security for 2048-bit DH)
+    let mut priv_bytes = [0u8; 32];
+    csprng_bytes(&mut priv_bytes);
+    priv_bytes[0] |= 0x80; // ensure high bit set
+    let private_key = BigUint::from_be_bytes(&priv_bytes);
+
+    // public = g^private mod p
+    let public_key = BigUint::mod_pow(&g, &private_key, &p);
+    let public_bytes = public_key.to_be_bytes();
+
+    crate::serial_println!("[dh] generated 2048-bit keypair ({} byte public key)", public_bytes.len());
+
+    DhKeypair { private_key, public_key, public_bytes }
 }
 
-/// Compute shared secret from our private key and peer's public key.
-/// shared = peer_public ^ our_private mod p
-pub fn dh_shared_secret(our_private: u64, peer_public: u64) -> u64 {
-    mod_pow(peer_public, our_private, DH_PRIME)
+/// Compute DH shared secret: peer_public ^ our_private mod p.
+pub fn dh_shared_secret(our_private: &BigUint, peer_public: &BigUint) -> BigUint {
+    let p = BigUint::from_be_bytes(&DH_GROUP14_PRIME_BYTES);
+    BigUint::mod_pow(peer_public, our_private, &p)
 }
 
 /// Derive a 16-byte AES key from a DH shared secret using SHA-256.
-pub fn dh_derive_key(shared_secret: u64) -> [u8; 16] {
+pub fn dh_derive_key(shared_secret: &BigUint) -> [u8; 16] {
     let secret_bytes = shared_secret.to_be_bytes();
     let hash = crate::crypto::sha256(&secret_bytes);
     let mut key = [0u8; 16];
@@ -707,8 +926,8 @@ pub fn dh_derive_key(shared_secret: u64) -> [u8; 16] {
     key
 }
 
-/// Derive a 16-byte IV from the shared secret (use second half of SHA-256).
-pub fn dh_derive_iv(shared_secret: u64) -> [u8; 16] {
+/// Derive a 16-byte IV from the shared secret (second half of SHA-256).
+pub fn dh_derive_iv(shared_secret: &BigUint) -> [u8; 16] {
     let secret_bytes = shared_secret.to_be_bytes();
     let hash = crate::crypto::sha256(&secret_bytes);
     let mut iv = [0u8; 16];
@@ -789,12 +1008,17 @@ pub struct SshCrypto {
 }
 
 impl SshCrypto {
-    /// Create SSH crypto context from a DH shared secret.
+    /// Create SSH crypto context from a DH shared secret hash (u64 seed).
+    /// Derives AES-128-CTR keys + HMAC-SHA256 MAC key via SHA-256.
     pub fn from_shared_secret(shared: u64) -> Self {
-        let enc_key = dh_derive_key(shared);
-        let enc_iv = dh_derive_iv(shared);
+        let secret_bytes = shared.to_be_bytes();
+        let hash = crate::crypto::sha256(&secret_bytes);
+        let mut enc_key = [0u8; 16];
+        enc_key.copy_from_slice(&hash[..16]);
+        let mut enc_iv = [0u8; 16];
+        enc_iv.copy_from_slice(&hash[16..32]);
         // Derive separate decrypt key by hashing with a different label
-        let mut dec_seed = shared.to_be_bytes().to_vec();
+        let mut dec_seed = secret_bytes.to_vec();
         dec_seed.push(0x01); // differentiate from encrypt key
         let dec_hash = crate::crypto::sha256(&dec_seed);
         let mut dec_key = [0u8; 16];
