@@ -162,6 +162,24 @@ const SYS_WIN_PIXEL: u64 = 211;
 const SYS_WIN_TEXT: u64 = 212;
 const SYS_WIN_CLOSE: u64 = 213;
 
+// POSIX I/O & Threading (230-249)
+const SYS_EPOLL_CREATE: u64 = 230;
+const SYS_EPOLL_CTL: u64 = 231;
+const SYS_EPOLL_WAIT: u64 = 232;
+const SYS_MUTEX_CREATE: u64 = 233;
+const SYS_MUTEX_LOCK: u64 = 234;
+const SYS_MUTEX_UNLOCK: u64 = 235;
+const SYS_MUTEX_DESTROY: u64 = 236;
+const SYS_CONDVAR_CREATE: u64 = 237;
+const SYS_CONDVAR_WAIT: u64 = 238;
+const SYS_CONDVAR_SIGNAL: u64 = 239;
+const SYS_CONDVAR_BROADCAST: u64 = 240;
+const SYS_FUTEX_WAIT: u64 = 241;
+const SYS_FUTEX_WAKE: u64 = 242;
+const SYS_FCNTL: u64 = 243;
+const SYS_SETSOCKOPT: u64 = 244;
+const SYS_GETSOCKOPT: u64 = 245;
+
 // GPU Compute & Inference (220-229)
 const SYS_GPU_INFO: u64 = 220;
 const SYS_GPU_ALLOC: u64 = 221;
@@ -1094,6 +1112,111 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             } else {
                 set_retval(-1);
             }
+        }
+
+        // ── POSIX I/O & Threading ─────────────────────────────────
+
+        SYS_EPOLL_CREATE => {
+            let epfd = crate::epoll::epoll_create();
+            set_retval(epfd as i64);
+        }
+
+        SYS_EPOLL_CTL => {
+            // epoll_ctl(epfd, op, fd, events)
+            // We pack op in arg1, fd in arg2, events in arg3; epfd in the high bits
+            let epfd = (arg1 >> 32) as u32;
+            let op = (arg1 & 0xFFFFFFFF) as u32;
+            let fd = arg2 as u32;
+            let events = arg3 as u32;
+            let r = crate::epoll::epoll_ctl(epfd, op, fd, events);
+            set_retval(r as i64);
+        }
+
+        SYS_EPOLL_WAIT => {
+            // epoll_wait(epfd, max_events, timeout_ms)
+            let epfd = arg1 as u32;
+            let max_events = arg2 as usize;
+            let timeout_ms = arg3 as i32;
+            let events = crate::epoll::epoll_wait(epfd, max_events.min(32), timeout_ms);
+            serial_println!("[syscall] epoll_wait(epfd={}) = {} events", epfd, events.len());
+            set_retval(events.len() as i64);
+        }
+
+        SYS_MUTEX_CREATE => {
+            let id = crate::pthread::mutex_create();
+            set_retval(id as i64);
+        }
+
+        SYS_MUTEX_LOCK => {
+            let r = crate::pthread::mutex_lock(arg1 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_MUTEX_UNLOCK => {
+            let r = crate::pthread::mutex_unlock(arg1 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_MUTEX_DESTROY => {
+            let r = crate::pthread::mutex_destroy(arg1 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_CONDVAR_CREATE => {
+            let id = crate::pthread::condvar_create();
+            set_retval(id as i64);
+        }
+
+        SYS_CONDVAR_WAIT => {
+            // condvar_wait(condvar_id, mutex_id)
+            let r = crate::pthread::condvar_wait(arg1 as u32, arg2 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_CONDVAR_SIGNAL => {
+            let r = crate::pthread::condvar_signal(arg1 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_CONDVAR_BROADCAST => {
+            let r = crate::pthread::condvar_broadcast(arg1 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_FUTEX_WAIT => {
+            // futex_wait(addr, expected)
+            let r = crate::pthread::futex_wait(arg1, arg2 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_FUTEX_WAKE => {
+            // futex_wake(addr, count)
+            let r = crate::pthread::futex_wake(arg1, arg2 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_FCNTL => {
+            // fcntl(fd, cmd, arg)
+            let r = crate::pthread::fcntl(arg1 as u32, arg2 as u32, arg3 as u32);
+            set_retval(r as i64);
+        }
+
+        SYS_SETSOCKOPT => {
+            // setsockopt(fd, level_opt_packed, value)
+            let fd = arg1 as u32;
+            let level = (arg2 >> 16) as u32;
+            let optname = (arg2 & 0xFFFF) as u32;
+            let optval = arg3 as u32;
+            let r = crate::pthread::setsockopt(fd, level, optname, optval);
+            set_retval(r as i64);
+        }
+
+        SYS_GETSOCKOPT => {
+            let fd = arg1 as u32;
+            let level = (arg2 >> 16) as u32;
+            let optname = (arg2 & 0xFFFF) as u32;
+            let r = crate::pthread::getsockopt(fd, level, optname);
+            set_retval(r as i64);
         }
 
         // ── GPU Compute & Inference ────────────────────────────────
