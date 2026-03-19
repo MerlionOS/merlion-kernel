@@ -2315,6 +2315,39 @@ pub fn dispatch_network(cmd: &str) -> bool {
                 }
             }
         }
+        _ if cmd.starts_with("curl ") => {
+            let url = cmd[5..].trim();
+            if url.is_empty() || url == "--help" {
+                println!("Usage: curl <url>");
+                println!("       curl -s <url>       (silent)");
+                println!("       curl -o <file> <url> (save to file)");
+            } else {
+                // Parse curl flags
+                let parts: alloc::vec::Vec<&str> = url.splitn(3, ' ').collect();
+                let (actual_url, save_path, silent) = if parts[0] == "-o" && parts.len() >= 3 {
+                    (parts[2], Some(parts[1]), false)
+                } else if parts[0] == "-s" && parts.len() >= 2 {
+                    (parts[1], None, true)
+                } else {
+                    (url, None, false)
+                };
+                match wget::fetch(actual_url) {
+                    Ok(response) => {
+                        if let Some(path) = save_path {
+                            match crate::vfs::write(path, &response) {
+                                Ok(()) => println!("Saved to {}", path),
+                                Err(e) => println!("curl: save error: {}", e),
+                            }
+                        } else {
+                            print!("{}", response);
+                        }
+                    }
+                    Err(e) => {
+                        if !silent { println!("curl: {}", e); }
+                    }
+                }
+            }
+        }
         "ifup" => {
             let pkt = dhcp::discover();
             println!("DHCP Discover built ({} bytes). Sending requires virtio-net RX.", pkt.len());
