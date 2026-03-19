@@ -156,6 +156,7 @@ pub mod log_rotate;
 pub mod login;
 pub mod markdown;
 pub mod memory;
+pub mod merlion_proxy;
 pub mod midi;
 pub mod mmap;
 pub mod microkernel;

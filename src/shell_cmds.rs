@@ -1494,6 +1494,25 @@ pub fn dispatch_system(cmd: &str) -> bool {
             let args = cmd[10..].trim();
             println!("{}", crate::oci_runtime::handle_command(args));
         }
+        // ── MerlionProxy (Envoy-compatible) ──────────────────────
+        cmd if cmd.starts_with("proxy ") => {
+            let args = cmd[6..].trim();
+            println!("{}", crate::merlion_proxy::handle_command(args));
+        }
+        "proxy" => {
+            println!("MerlionProxy — Envoy-compatible L7 proxy");
+            println!("");
+            println!("Commands:");
+            println!("  proxy start              Start the proxy");
+            println!("  proxy stop               Stop the proxy");
+            println!("  proxy status             Show configuration");
+            println!("  proxy stats              Show metrics");
+            println!("  proxy cluster <n> <ep>   Add cluster with endpoint");
+            println!("  proxy route <pfx> <cl>   Add route prefix → cluster");
+            println!("  proxy config <file>      Load config from VFS");
+            println!("  proxy test <path>        Test route resolution");
+        }
+
         "docker" | "docker help" => {
             println!("MerlionOS Docker-compatible container runtime");
             println!("");
