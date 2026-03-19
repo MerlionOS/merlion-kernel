@@ -793,6 +793,122 @@ pub fn handle_command(args: &str) -> String {
         }
         "info" => oci_info(),
         "stats" => oci_stats(),
+        "ps" => list_containers(),
+
+        // ── Docker Compose ──────────────────────────────────────
+        "compose" => {
+            if parts.len() < 2 {
+                return String::from("Usage: container compose <up|down|ps|logs> [args]");
+            }
+            let sub = parts[1];
+            match sub {
+                "up" => {
+                    if parts.len() >= 3 {
+                        // Read compose file from VFS
+                        match crate::vfs::cat(parts[2]) {
+                            Ok(content) => match compose_up(&content) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("compose up failed: {}", e),
+                            },
+                            Err(e) => format!("Cannot read {}: {}", parts[2], e),
+                        }
+                    } else {
+                        // Try default docker-compose.yml
+                        match crate::vfs::cat("/docker-compose.yml") {
+                            Ok(content) => match compose_up(&content) {
+                                Ok(msg) => msg,
+                                Err(e) => format!("compose up failed: {}", e),
+                            },
+                            Err(_) => String::from("Usage: container compose up [file]\nNo /docker-compose.yml found"),
+                        }
+                    }
+                }
+                "down" => compose_down(),
+                "ps" => compose_ps(),
+                "logs" => {
+                    if parts.len() >= 3 {
+                        match logs(parts[2]) {
+                            Ok(msg) => msg,
+                            Err(e) => format!("Error: {}", e),
+                        }
+                    } else {
+                        compose_logs()
+                    }
+                }
+                "restart" => {
+                    let down_msg = compose_down();
+                    let up_msg = match crate::vfs::cat("/docker-compose.yml") {
+                        Ok(content) => compose_up(&content).unwrap_or_else(|e| format!("Error: {}", e)),
+                        Err(_) => String::from("No /docker-compose.yml found"),
+                    };
+                    format!("{}\n{}", down_msg, up_msg)
+                }
+                _ => format!("Unknown compose subcommand: {}", sub),
+            }
+        }
+
         _ => format!("Unknown container subcommand: {}", parts[0]),
+    }
+}
+
+/// Stop all running containers (compose down).
+pub fn compose_down() -> String {
+    let rt = RUNTIME.lock();
+    let names: Vec<String> = rt.containers.iter()
+        .filter(|c| c.state == ContainerState::Running)
+        .map(|c| c.name.clone())
+        .collect();
+    drop(rt);
+
+    if names.is_empty() {
+        return String::from("No running containers to stop.");
+    }
+
+    let mut results = Vec::new();
+    for name in &names {
+        match stop(name) {
+            Ok(msg) => results.push(msg),
+            Err(e) => results.push(format!("Error stopping {}: {}", name, e)),
+        }
+    }
+    results.join("\n")
+}
+
+/// List containers launched by compose (same as ps, but formatted for compose).
+pub fn compose_ps() -> String {
+    let rt = RUNTIME.lock();
+    if rt.containers.is_empty() {
+        return String::from("No containers.");
+    }
+    let mut out = String::from("NAME                IMAGE           STATUS\n");
+    for c in &rt.containers {
+        let status = match c.state {
+            ContainerState::Created => "created",
+            ContainerState::Running => "running",
+            ContainerState::Stopped => "stopped",
+        };
+        out.push_str(&alloc::format!("{:<20}{:<16}{}\n", c.name, c.image, status));
+    }
+    out
+}
+
+/// Aggregate logs from all running containers.
+pub fn compose_logs() -> String {
+    let rt = RUNTIME.lock();
+    let names: Vec<String> = rt.containers.iter()
+        .map(|c| c.name.clone())
+        .collect();
+    drop(rt);
+
+    let mut out = String::new();
+    for name in &names {
+        if let Ok(log) = logs(name) {
+            out.push_str(&alloc::format!("=== {} ===\n{}\n", name, log));
+        }
+    }
+    if out.is_empty() {
+        String::from("No logs available.")
+    } else {
+        out
     }
 }

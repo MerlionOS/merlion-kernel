@@ -1482,6 +1482,10 @@ pub fn dispatch_system(cmd: &str) -> bool {
             }
         }
         // ── Docker / Container commands ─────────────────────────
+        cmd if cmd.starts_with("docker compose ") => {
+            let args = alloc::format!("compose {}", cmd[15..].trim());
+            println!("{}", crate::oci_runtime::handle_command(&args));
+        }
         cmd if cmd.starts_with("docker ") => {
             let args = cmd[7..].trim();
             println!("{}", crate::oci_runtime::handle_command(args));
