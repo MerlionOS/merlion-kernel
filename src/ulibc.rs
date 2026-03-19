@@ -1725,3 +1725,139 @@ pub fn gen_beep() -> Vec<u8> {
     c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
     c
 }
+
+/// Generate "desktop" program: draws a simple desktop UI on VGA text buffer.
+pub fn gen_desktop() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let msg1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Draw title bar: write "MerlionOS Desktop" at row 0 via SYS_WIN_TEXT (212)
+    let title = b"MerlionOS Desktop v100.9";
+    for (i, &ch) in title.iter().enumerate() {
+        emit_mov_rdi_imm64(&mut c, i as u64);     // x
+        emit_mov_rsi_imm64(&mut c, 0);             // y = 0 (top row)
+        emit_mov_rdx_imm64(&mut c, ch as u64);     // char
+        emit_raw_syscall(&mut c, 212);              // SYS_WIN_TEXT
+    }
+
+    // Draw status bar at row 24
+    let status = b"[Shell] [Files] [Settings]   ";
+    for (i, &ch) in status.iter().enumerate() {
+        emit_mov_rdi_imm64(&mut c, i as u64);
+        emit_mov_rsi_imm64(&mut c, 24);
+        emit_mov_rdx_imm64(&mut c, ch as u64);
+        emit_raw_syscall(&mut c, 212);
+    }
+
+    // Draw a "window" border at row 3-15, col 5-60
+    // Top border
+    for x in 5..60 {
+        emit_mov_rdi_imm64(&mut c, x as u64);
+        emit_mov_rsi_imm64(&mut c, 3);
+        emit_mov_rdx_imm64(&mut c, b'-' as u64);
+        emit_raw_syscall(&mut c, 212);
+    }
+    // Window title
+    let wtitle = b"| Terminal |";
+    for (i, &ch) in wtitle.iter().enumerate() {
+        emit_mov_rdi_imm64(&mut c, (5 + i) as u64);
+        emit_mov_rsi_imm64(&mut c, 4);
+        emit_mov_rdx_imm64(&mut c, ch as u64);
+        emit_raw_syscall(&mut c, 212);
+    }
+
+    let msg2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let msg1 = text_base + c.len() as u64;
+    c.extend_from_slice(b"desktop: drawing MerlionOS desktop UI...\n\0");
+    let msg2 = text_base + c.len() as u64;
+    c.extend_from_slice(b"desktop: UI rendered! (title bar + status bar + window)\n\0");
+
+    c[msg1_fixup..msg1_fixup+8].copy_from_slice(&msg1.to_le_bytes());
+    c[msg2_fixup..msg2_fixup+8].copy_from_slice(&msg2.to_le_bytes());
+    c
+}
+
+/// Generate "game" program: a simple counter game that demonstrates
+/// user interaction via getpid, gettime, malloc, and print.
+pub fn gen_game() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    // Banner
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Get start time
+    emit_call_libc(&mut c, FN_GETTIME);
+    c.extend_from_slice(&[0x49, 0x89, 0xC4]); // mov r12, rax (start_time)
+
+    // Count loop: allocate, fill, free (simulated work)
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Do 5 rounds of "work"
+    c.extend_from_slice(&[0x49, 0xC7, 0xC5, 0x05, 0x00, 0x00, 0x00]); // mov r13, 5
+    let loop_start = c.len();
+    // malloc(32)
+    emit_mov_rdi_imm64(&mut c, 32);
+    emit_call_libc(&mut c, FN_MALLOC);
+    // memset(ptr, round_number, 32)
+    emit_mov_rdi_rax(&mut c);
+    c.extend_from_slice(&[0x4C, 0x89, 0xEE]); // mov rsi, r13
+    emit_mov_rdx_imm64(&mut c, 32);
+    emit_call_libc(&mut c, FN_MEMSET);
+    // print round number
+    let m3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.extend_from_slice(&[0x4C, 0x89, 0xEF]); // mov rdi, r13
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    // dec r13, loop if > 0
+    c.extend_from_slice(&[0x49, 0xFF, 0xCD]); // dec r13
+    let jnz_disp = (loop_start as isize - (c.len() as isize + 2)) as i8;
+    c.extend_from_slice(&[0x75, jnz_disp as u8]); // jnz loop_start
+
+    // Get end time, compute elapsed
+    emit_call_libc(&mut c, FN_GETTIME);
+    // elapsed = end_time - start_time
+    c.extend_from_slice(&[0x4C, 0x29, 0xE0]); // sub rax, r12
+
+    let m4_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+    let m5_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64; c.extend_from_slice(b"=== MerlionOS Game: Allocation Race ===\n\0");
+    let m2 = text_base + c.len() as u64; c.extend_from_slice(b"Starting 5 rounds of malloc+memset...\n\0");
+    let m3 = text_base + c.len() as u64; c.extend_from_slice(b"  Round \0");
+    let m4 = text_base + c.len() as u64; c.extend_from_slice(b"\nElapsed: \0");
+    let m5 = text_base + c.len() as u64; c.extend_from_slice(b" seconds\n=== Game complete! ===\n\0");
+
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c[m3_fixup..m3_fixup+8].copy_from_slice(&m3.to_le_bytes());
+    c[m4_fixup..m4_fixup+8].copy_from_slice(&m4.to_le_bytes());
+    c[m5_fixup..m5_fixup+8].copy_from_slice(&m5.to_le_bytes());
+    c
+}

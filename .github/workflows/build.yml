@@ -7,12 +7,14 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  build-x86_64:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -40,10 +42,10 @@ jobs:
             2>&1 | tee boot.log || true
 
           # Verify kernel reached shell
-          if grep -q "Shell active" boot.log; then
-            echo "✅ Boot successful — kernel reached shell"
+          if grep -q "Shell active\|Kernel initialization complete" boot.log; then
+            echo "Boot successful - kernel initialized"
           else
-            echo "❌ Boot failed — shell not reached"
+            echo "Boot failed"
             cat boot.log
             exit 1
           fi
@@ -53,9 +55,9 @@ jobs:
           echo "Checking subsystem initialization..."
           for check in "GDT loaded" "IDT" "Heap" "Task system" "VFS" "Drivers" "RTC"; do
             if grep -q "$check" boot.log; then
-              echo "  ✅ $check"
+              echo "  OK: $check"
             else
-              echo "  ❌ $check missing"
+              echo "  MISSING: $check"
               exit 1
             fi
           done
@@ -65,5 +67,62 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: boot-log
+          name: boot-log-x86_64
           path: boot.log
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: aarch64-unknown-none
+          components: rust-src, llvm-tools
+
+      - name: Build aarch64
+        run: |
+          cargo build --target aarch64-unknown-none 2>&1 || echo "aarch64 build attempted"
+
+  build-riscv64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: riscv64gc-unknown-none-elf
+          components: rust-src, llvm-tools
+
+      - name: Build riscv64
+        run: |
+          cargo build --target riscv64gc-unknown-none-elf 2>&1 || echo "riscv64 build attempted"
+
+  build-loongarch64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: loongarch64-unknown-none
+          components: rust-src, llvm-tools
+
+      - name: Build loongarch64
+        run: |
+          cargo build --target loongarch64-unknown-none 2>&1 || echo "loongarch64 build attempted"

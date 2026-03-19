@@ -156,6 +156,12 @@ const SYS_DISK_WRITE: u64 = 203;
 const SYS_CPUINFO: u64 = 204;
 const SYS_USB_LIST: u64 = 205;
 
+// GUI (210-219)
+const SYS_WIN_CREATE: u64 = 210;
+const SYS_WIN_PIXEL: u64 = 211;
+const SYS_WIN_TEXT: u64 = 212;
+const SYS_WIN_CLOSE: u64 = 213;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -1246,6 +1252,52 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 println!("[user] {}", info);
                 set_retval(info.len() as i64);
             }
+        }
+
+        // ── GUI ────────────────────────────────────────────────────
+
+        SYS_WIN_CREATE => {
+            // win_create(width, height, title_ptr) → widget_id
+            let _width = arg1;
+            let _height = arg2;
+            let id = crate::widget::create_widget(crate::widget::WidgetType::Panel {
+                bg_color: crate::widget::Color::new(0, 0, 0),
+                border: true,
+            });
+            serial_println!("[syscall] win_create() = {}", id);
+            set_retval(id as i64);
+        }
+
+        SYS_WIN_PIXEL => {
+            // win_pixel(widget_id_x_packed, y, color)
+            // Draws on framebuffer — reuse FBWRITE logic
+            let x = arg1 as usize;
+            let y = arg2 as usize;
+            let color = arg3 as u8;
+            let mut fb = crate::framebuf::FRAMEBUF.lock();
+            fb.set_pixel(x, y, color);
+            set_retval(0);
+        }
+
+        SYS_WIN_TEXT => {
+            // win_text(x, y, char) — draw character at position
+            let x = arg1 as usize;
+            let y = arg2 as usize;
+            let ch = arg3 as u8;
+            // Use VGA text buffer for simplicity
+            if x < 80 && y < 25 {
+                let idx = y * 80 + x;
+                let vga = 0xb8000 as *mut u16;
+                unsafe { *vga.add(idx) = (0x0F << 8) | ch as u16; }
+            }
+            set_retval(0);
+        }
+
+        SYS_WIN_CLOSE => {
+            let id = arg1 as u32;
+            crate::widget::destroy_widget(id);
+            serial_println!("[syscall] win_close({})", id);
+            set_retval(0);
         }
 
         _ => {

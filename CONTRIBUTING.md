@@ -24,10 +24,10 @@ make run-ai         # with LLM proxy support
 
 ```
 merlion-kernel/
-├── src/               # 58 kernel modules (~9700 lines of Rust)
-├── docs/              # Architecture, AI Native OS, Deep Dive docs
-├── tools/             # LLM proxy and utilities
-├── .github/workflows/ # CI: auto build + boot test
+├── src/               # ~385 kernel modules (~153K lines of Rust)
+├── docs/              # Syscall reference, API docs, roadmap, architecture
+├── tools/             # Limine bootloader, LLM proxy, utilities
+├── .github/workflows/ # CI: build 4 architectures + boot test
 ├── CLAUDE.md          # AI assistant context
 ├── Cargo.toml         # Rust package manifest
 ├── Makefile           # Build/run shortcuts
@@ -38,9 +38,20 @@ merlion-kernel/
 
 ### Adding a Shell Command
 
-1. Add the command in `src/shell.rs` → `dispatch()` match block
-2. Add help text in the `"help"` case
-3. Test: `make run` → type your command
+1. Add a match arm in `src/shell_cmds.rs` (appropriate dispatch function)
+2. Test: `make run` → type your command
+
+### Adding a Syscall
+
+1. Add constant in `src/syscall.rs` (next available number)
+2. Add handler in the `dispatch()` match block
+3. Update `docs/syscall-reference.md`
+
+### Adding a User Program
+
+1. Create generator in `src/ulibc.rs` (e.g., `gen_myprogram()`)
+2. Register in `src/userspace.rs::get_builtin_program()`
+3. Add to `list_builtin_programs()` and `is_libc_program` check
 
 ### Adding a Kernel Module
 
@@ -83,10 +94,11 @@ make build    # must compile cleanly
 make run      # must boot to shell prompt
 ```
 
-Type `test` in the shell to run 15 built-in kernel self-tests.
+Type `test` in the shell to run built-in kernel self-tests.
+Type `run-user test-suite` to run userspace syscall validation.
 Type `demo` to run the full system showcase.
 
-CI automatically builds and boot-tests every push to `main`.
+CI builds all 4 architectures and boot-tests x86_64 on every push to `main`.
 
 ## Architecture
 

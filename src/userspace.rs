@@ -780,6 +780,8 @@ pub fn get_builtin_program(name: &str) -> Option<Vec<u8>> {
         "pkg-install" => Some(crate::ulibc::gen_pkg_install()),
         "test-suite"  => Some(crate::ulibc::gen_test_suite()),
         "beep"        => Some(crate::ulibc::gen_beep()),
+        "desktop"     => Some(crate::ulibc::gen_desktop()),
+        "game"        => Some(crate::ulibc::gen_game()),
         _ => None,
     };
     if let Some(c) = gen_code {
@@ -803,7 +805,7 @@ pub fn list_builtin_programs() -> &'static [&'static str] {
         "cat", "echo", "wc", "ls", "init",
         // Applications
         "ush", "fwrite-test", "paint", "wget-user", "pkg-install",
-        "test-suite", "beep",
+        "test-suite", "beep", "desktop", "game",
     ]
 }
 
@@ -927,7 +929,7 @@ pub fn create_process(name: &str, elf_data: &[u8]) -> Result<u32, &'static str> 
         "malloc-test" | "printf-test" | "string-test" | "libc-demo" | "dynlink-test" |
         "cat" | "echo" | "wc" | "ls" | "init" |
         "ush" | "fwrite-test" | "paint" | "wget-user" | "pkg-install" |
-        "test-suite" | "beep"
+        "test-suite" | "beep" | "desktop" | "game"
     );
     if is_libc_program {
         ensure_libc_loaded()?;
