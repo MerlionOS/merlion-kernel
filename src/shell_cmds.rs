@@ -1499,6 +1499,9 @@ pub fn dispatch_system(cmd: &str) -> bool {
             let args = cmd[6..].trim();
             println!("{}", crate::merlion_proxy::handle_command(args));
         }
+        "rust-std" | "std-info" => {
+            print!("{}", crate::rust_std::info());
+        }
         "proxy" => {
             println!("MerlionProxy — Envoy-compatible L7 proxy");
             println!("");

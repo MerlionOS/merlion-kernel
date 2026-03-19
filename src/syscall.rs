@@ -1744,6 +1744,13 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             set_retval(0);
         }
 
+        // ── Rust std shim (270-299) ───────────────────────────────
+
+        270..=299 => {
+            let result = crate::rust_std::dispatch(syscall_num, arg1, arg2, arg3);
+            set_retval(result);
+        }
+
         _ => {
             serial_println!("[syscall] unknown syscall {}", syscall_num);
             set_retval(-1);
