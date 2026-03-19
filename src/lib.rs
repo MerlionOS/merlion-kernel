@@ -193,6 +193,7 @@ pub mod pkg_registry;
 pub mod perf_events;
 pub mod power;
 pub mod power_mgmt;
+pub mod posix;
 pub mod procfs;
 pub mod process;
 pub mod pthread;

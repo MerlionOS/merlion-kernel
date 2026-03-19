@@ -180,6 +180,28 @@ const SYS_FCNTL: u64 = 243;
 const SYS_SETSOCKOPT: u64 = 244;
 const SYS_GETSOCKOPT: u64 = 245;
 
+// POSIX Extended (250-269) — E1+E2+E3
+const SYS_FOPEN: u64 = 250;
+const SYS_FCLOSE: u64 = 251;
+const SYS_FREAD: u64 = 252;
+const SYS_FSEEK: u64 = 253;
+const SYS_GETTIMEOFDAY: u64 = 254;
+const SYS_CLOCK_MONOTONIC: u64 = 255;
+const SYS_GETADDRINFO: u64 = 256;
+const SYS_TLS_KEY_CREATE: u64 = 257;
+const SYS_TLS_SET: u64 = 258;
+const SYS_TLS_GET: u64 = 259;
+const SYS_EVENTFD: u64 = 260;
+const SYS_EVENTFD_READ: u64 = 261;
+const SYS_EVENTFD_WRITE: u64 = 262;
+const SYS_TIMERFD_CREATE: u64 = 263;
+const SYS_TIMERFD_SETTIME: u64 = 264;
+const SYS_TIMERFD_READ: u64 = 265;
+const SYS_GETRANDOM: u64 = 266;
+const SYS_POLL: u64 = 267;
+const SYS_SHUTDOWN: u64 = 268;
+const SYS_GETENV: u64 = 269;
+
 // GPU Compute & Inference (220-229)
 const SYS_GPU_INFO: u64 = 220;
 const SYS_GPU_ALLOC: u64 = 221;
@@ -1217,6 +1239,139 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let optname = (arg2 & 0xFFFF) as u32;
             let r = crate::pthread::getsockopt(fd, level, optname);
             set_retval(r as i64);
+        }
+
+        // ── POSIX Extended (E1+E2+E3) ─────────────────────────────
+
+        SYS_FOPEN => {
+            if let Some(path) = read_user_str(arg1, arg2) {
+                let mode = if arg3 == 1 { "w" } else { "r" };
+                let id = crate::posix::fopen(&path, mode);
+                set_retval(id as i64);
+            } else { set_retval(-1); }
+        }
+
+        SYS_FCLOSE => {
+            set_retval(crate::posix::fclose(arg1) as i64);
+        }
+
+        SYS_FREAD => {
+            let stream_id = arg1;
+            let buf_ptr = arg2;
+            let max_len = arg3 as usize;
+            let data = crate::posix::fread(stream_id, max_len);
+            if buf_ptr != 0 && !data.is_empty() {
+                unsafe { write_user_buf(buf_ptr, &data, max_len as u64) };
+            }
+            set_retval(data.len() as i64);
+        }
+
+        SYS_FSEEK => {
+            set_retval(crate::posix::fseek(arg1, arg2 as i64, arg3 as u32) as i64);
+        }
+
+        SYS_GETTIMEOFDAY => {
+            let (secs, us) = crate::posix::gettimeofday();
+            if arg1 != 0 {
+                let data: [u64; 2] = [secs, us];
+                let bytes = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const u8, 16) };
+                unsafe { write_user_buf(arg1, bytes, 16) };
+            }
+            set_retval(secs as i64);
+        }
+
+        SYS_CLOCK_MONOTONIC => {
+            let (secs, ns) = crate::posix::clock_gettime_monotonic();
+            if arg1 != 0 {
+                let data: [u64; 2] = [secs, ns];
+                let bytes = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const u8, 16) };
+                unsafe { write_user_buf(arg1, bytes, 16) };
+            }
+            set_retval(secs as i64);
+        }
+
+        SYS_GETADDRINFO => {
+            if let Some(host) = read_user_str(arg1, arg2) {
+                if let Some(ip) = crate::posix::getaddrinfo(&host) {
+                    if arg3 != 0 {
+                        unsafe { write_user_buf(arg3, &ip, 4) };
+                    }
+                    set_retval(0);
+                } else {
+                    set_retval(-1);
+                }
+            } else { set_retval(-1); }
+        }
+
+        SYS_TLS_KEY_CREATE => {
+            set_retval(crate::posix::tls_key_create() as i64);
+        }
+
+        SYS_TLS_SET => {
+            crate::posix::tls_set(arg1 as u32, arg2);
+            set_retval(0);
+        }
+
+        SYS_TLS_GET => {
+            set_retval(crate::posix::tls_get(arg1 as u32) as i64);
+        }
+
+        SYS_EVENTFD => {
+            let fd = crate::posix::eventfd_create(arg1, arg2 != 0);
+            set_retval(fd as i64);
+        }
+
+        SYS_EVENTFD_READ => {
+            set_retval(crate::posix::eventfd_read(arg1) as i64);
+        }
+
+        SYS_EVENTFD_WRITE => {
+            set_retval(crate::posix::eventfd_write(arg1, arg2) as i64);
+        }
+
+        SYS_TIMERFD_CREATE => {
+            set_retval(crate::posix::timerfd_create() as i64);
+        }
+
+        SYS_TIMERFD_SETTIME => {
+            set_retval(crate::posix::timerfd_settime(arg1, arg2, arg3) as i64);
+        }
+
+        SYS_TIMERFD_READ => {
+            set_retval(crate::posix::timerfd_read(arg1) as i64);
+        }
+
+        SYS_GETRANDOM => {
+            let buf_ptr = arg1;
+            let len = arg2 as usize;
+            if buf_ptr != 0 && len > 0 && len <= 256 {
+                let mut buf = alloc::vec![0u8; len];
+                crate::posix::getrandom(&mut buf);
+                unsafe { write_user_buf(buf_ptr, &buf, len as u64) };
+                set_retval(len as i64);
+            } else { set_retval(-1); }
+        }
+
+        SYS_POLL => {
+            // Simplified: just return immediately with all fds ready
+            set_retval(arg1 as i64); // nfds
+        }
+
+        SYS_SHUTDOWN => {
+            set_retval(crate::posix::shutdown(arg1 as usize, arg2 as u32) as i64);
+        }
+
+        SYS_GETENV => {
+            if let Some(name) = read_user_str(arg1, arg2) {
+                if let Some(val) = crate::posix::getenv(&name) {
+                    if arg3 != 0 {
+                        unsafe { write_user_buf(arg3, val.as_bytes(), 256) };
+                    }
+                    set_retval(val.len() as i64);
+                } else {
+                    set_retval(-1);
+                }
+            } else { set_retval(-1); }
         }
 
         // ── GPU Compute & Inference ────────────────────────────────
