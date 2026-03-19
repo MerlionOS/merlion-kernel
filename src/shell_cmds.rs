@@ -1374,8 +1374,123 @@ pub fn dispatch_system(cmd: &str) -> bool {
             }
         }
         "whoami" => {
-            println!("{}", env::get("USER").unwrap_or_else(|| alloc::string::String::from("root")));
+            println!("{}", crate::security::whoami());
         }
+
+        // ── User management ──────────────────────────────────────
+        cmd if cmd.starts_with("useradd ") => {
+            // useradd <username> <password> [uid]
+            let parts: alloc::vec::Vec<&str> = cmd[8..].trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                let name = parts[0];
+                let pass = parts[1];
+                let uid = if parts.len() >= 3 {
+                    parts[2].parse::<u32>().unwrap_or(1000)
+                } else {
+                    // Auto-assign UID: 1000+
+                    let users = crate::security::list_users();
+                    users.iter().map(|(u, _)| *u).max().unwrap_or(999) + 1
+                };
+                match crate::security::add_user(uid, name, pass, &[uid]) {
+                    Ok(()) => println!("User '{}' created (uid={})", name, uid),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: useradd <username> <password> [uid]");
+            }
+        }
+        cmd if cmd.starts_with("userdel ") => {
+            let name = cmd[8..].trim();
+            if let Some(uid) = crate::security::uid_by_name(name) {
+                match crate::security::remove_user(uid) {
+                    Ok(()) => println!("User '{}' removed", name),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("User '{}' not found", name);
+            }
+        }
+        cmd if cmd.starts_with("passwd ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[7..].trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                match crate::security::passwd(parts[0], None, parts[1]) {
+                    Ok(()) => println!("Password changed for '{}'", parts[0]),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: passwd <username> <new_password>");
+            }
+        }
+        cmd if cmd.starts_with("su ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[3..].trim().split_whitespace().collect();
+            if !parts.is_empty() {
+                let pass = if parts.len() >= 2 { Some(parts[1]) } else { None };
+                match crate::security::su(parts[0], pass) {
+                    Ok(()) => {
+                        crate::env::set("USER", parts[0]);
+                        println!("Switched to user '{}'", parts[0]);
+                    }
+                    Err(e) => println!("su: {}", e),
+                }
+            } else {
+                println!("Usage: su <username> [password]");
+            }
+        }
+        "users" | "list-users" => {
+            let users = crate::security::list_users();
+            for (uid, name) in &users {
+                println!("  uid={:4}  {}", uid, name);
+            }
+            println!("{} user(s)", users.len());
+        }
+        "groups" | "list-groups" => {
+            let groups = crate::security::list_groups();
+            for (gid, name) in &groups {
+                println!("  gid={:4}  {}", gid, name);
+            }
+            println!("{} group(s)", groups.len());
+        }
+        cmd if cmd.starts_with("groupadd ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[9..].trim().split_whitespace().collect();
+            if !parts.is_empty() {
+                let name = parts[0];
+                let gid = if parts.len() >= 2 {
+                    parts[1].parse::<u32>().unwrap_or(1000)
+                } else {
+                    let groups = crate::security::list_groups();
+                    groups.iter().map(|(g, _)| *g).max().unwrap_or(999) + 1
+                };
+                match crate::security::add_group(gid, name) {
+                    Ok(()) => println!("Group '{}' created (gid={})", name, gid),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: groupadd <name> [gid]");
+            }
+        }
+        cmd if cmd.starts_with("id ") => {
+            let user = cmd[3..].trim();
+            match crate::security::id_info(Some(user)) {
+                Ok(info) => println!("{}", info),
+                Err(e) => println!("id: {}", e),
+            }
+        }
+        "id" => {
+            match crate::security::id_info(None) {
+                Ok(info) => println!("{}", info),
+                Err(_) => println!("uid=0(root) gid=0(root)"),
+            }
+        }
+        "who" => {
+            print!("{}", crate::multi_user::who());
+        }
+        "w" => {
+            print!("{}", crate::multi_user::w());
+        }
+        "last" => {
+            print!("{}", crate::multi_user::last());
+        }
+
         "hostname" => {
             println!("{}", env::get("HOSTNAME").unwrap_or_else(|| alloc::string::String::from("merlion")));
         }
