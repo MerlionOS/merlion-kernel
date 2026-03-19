@@ -1481,6 +1481,46 @@ pub fn dispatch_system(cmd: &str) -> bool {
                 Err(_) => println!("uid=0(root) gid=0(root)"),
             }
         }
+        // ── Docker / Container commands ─────────────────────────
+        cmd if cmd.starts_with("docker ") => {
+            let args = cmd[7..].trim();
+            println!("{}", crate::oci_runtime::handle_command(args));
+        }
+        cmd if cmd.starts_with("container ") => {
+            let args = cmd[10..].trim();
+            println!("{}", crate::oci_runtime::handle_command(args));
+        }
+        "docker" | "docker help" => {
+            println!("MerlionOS Docker-compatible container runtime");
+            println!("");
+            println!("Commands:");
+            println!("  docker run <image> [cmd]    Run a container");
+            println!("  docker stop <name>          Stop a container");
+            println!("  docker kill <name>          Kill a container");
+            println!("  docker rm <name>            Remove a container");
+            println!("  docker exec <name> <cmd>    Execute in container");
+            println!("  docker logs <name>          View container logs");
+            println!("  docker ps                   List containers");
+            println!("  docker images               List images");
+            println!("  docker pull <image>         Pull an image");
+            println!("  docker rmi <image>          Remove an image");
+            println!("  docker inspect <name>       Container details");
+            println!("  docker info                 Runtime info");
+            println!("  docker compose up <file>    Compose deployment");
+        }
+        "docker ps" => {
+            println!("{}", crate::oci_runtime::list_containers());
+        }
+        "docker images" => {
+            println!("{}", crate::oci_runtime::list_images());
+        }
+        "docker info" => {
+            println!("{}", crate::oci_runtime::oci_info());
+        }
+        "docker stats" => {
+            println!("{}", crate::oci_runtime::oci_stats());
+        }
+
         "sshd" | "sshd start" => {
             println!("Starting SSH server on port 22...");
             println!("Connect with: ssh root@<ip> -p 22");
