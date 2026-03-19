@@ -1595,3 +1595,133 @@ pub fn gen_pkg_install() -> Vec<u8> {
 
     c
 }
+
+/// Generate "test-suite": validates major syscalls and libc functions.
+pub fn gen_test_suite() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let msg0_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Test getpid
+    emit_call_libc(&mut c, FN_GETPID);
+    let t1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    // Test strlen("hello") → 5
+    let str_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_STRLEN);
+    emit_push_rax(&mut c);
+    let t2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    c.push(0x58);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Test malloc(64)
+    let t3_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_mov_rdi_imm64(&mut c, 64);
+    emit_call_libc(&mut c, FN_MALLOC);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Test gettime
+    let t4_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_call_libc(&mut c, FN_GETTIME);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Test strcmp("abc","abc") → 0
+    let t5_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    let cmp1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    let cmp2_fixup = c.len() + 2;
+    emit_mov_rsi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_STRCMP);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Test fork
+    let t6_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+    emit_raw_syscall(&mut c, 110);
+    emit_mov_rdi_rax(&mut c);
+    emit_call_libc(&mut c, FN_PRINT_INT);
+
+    // Done
+    let done_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    // Strings
+    let msg0 = text_base + c.len() as u64; c.extend_from_slice(b"=== MerlionOS Syscall Test Suite ===\n\0");
+    let t1 = text_base + c.len() as u64; c.extend_from_slice(b"[PASS] getpid\n\0");
+    let str1 = text_base + c.len() as u64; c.extend_from_slice(b"hello\0");
+    let t2 = text_base + c.len() as u64; c.extend_from_slice(b"[TEST] strlen = \0");
+    let t3 = text_base + c.len() as u64; c.extend_from_slice(b"\n[TEST] malloc = \0");
+    let t4 = text_base + c.len() as u64; c.extend_from_slice(b"\n[TEST] time = \0");
+    let t5 = text_base + c.len() as u64; c.extend_from_slice(b"\n[TEST] strcmp = \0");
+    let c1 = text_base + c.len() as u64; c.extend_from_slice(b"abc\0");
+    let c2 = text_base + c.len() as u64; c.extend_from_slice(b"abc\0");
+    let t6 = text_base + c.len() as u64; c.extend_from_slice(b"\n[TEST] fork = \0");
+    let done = text_base + c.len() as u64; c.extend_from_slice(b"\n=== All tests complete ===\n\0");
+
+    c[msg0_fixup..msg0_fixup+8].copy_from_slice(&msg0.to_le_bytes());
+    c[t1_fixup..t1_fixup+8].copy_from_slice(&t1.to_le_bytes());
+    c[str_fixup..str_fixup+8].copy_from_slice(&str1.to_le_bytes());
+    c[t2_fixup..t2_fixup+8].copy_from_slice(&t2.to_le_bytes());
+    c[t3_fixup..t3_fixup+8].copy_from_slice(&t3.to_le_bytes());
+    c[t4_fixup..t4_fixup+8].copy_from_slice(&t4.to_le_bytes());
+    c[t5_fixup..t5_fixup+8].copy_from_slice(&t5.to_le_bytes());
+    c[cmp1_fixup..cmp1_fixup+8].copy_from_slice(&c1.to_le_bytes());
+    c[cmp2_fixup..cmp2_fixup+8].copy_from_slice(&c2.to_le_bytes());
+    c[t6_fixup..t6_fixup+8].copy_from_slice(&t6.to_le_bytes());
+    c[done_fixup..done_fixup+8].copy_from_slice(&done.to_le_bytes());
+    c
+}
+
+/// Generate "beep": plays A4-A5-A6 melody via SYS_BEEP.
+pub fn gen_beep() -> Vec<u8> {
+    let text_base: u64 = 0x0000_0040_0000;
+    let mut c: Vec<u8> = Vec::new();
+
+    let m1_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    for &(freq, dur) in &[(440u64, 200u64), (880, 200), (1760, 400)] {
+        emit_mov_rdi_imm64(&mut c, freq);
+        emit_mov_rsi_imm64(&mut c, dur);
+        emit_raw_syscall(&mut c, 200);
+    }
+
+    let m2_fixup = c.len() + 2;
+    emit_mov_rdi_imm64(&mut c, 0);
+    emit_call_libc(&mut c, FN_PUTS);
+
+    c.extend_from_slice(&[0x48, 0x31, 0xFF]);
+    emit_call_libc(&mut c, FN_EXIT);
+    c.extend_from_slice(&[0xEB, 0xFE]);
+
+    let m1 = text_base + c.len() as u64; c.extend_from_slice(b"beep: A4-A5-A6 melody\n\0");
+    let m2 = text_base + c.len() as u64; c.extend_from_slice(b"beep: done!\n\0");
+    c[m1_fixup..m1_fixup+8].copy_from_slice(&m1.to_le_bytes());
+    c[m2_fixup..m2_fixup+8].copy_from_slice(&m2.to_le_bytes());
+    c
+}

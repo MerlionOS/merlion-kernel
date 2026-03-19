@@ -148,6 +148,14 @@ const SYS_FWRITE: u64 = 195;
 const SYS_FBWRITE: u64 = 196;
 const SYS_WGET: u64 = 197;
 
+// Audio & Hardware (200-209)
+const SYS_BEEP: u64 = 200;
+const SYS_PLAY_TONE: u64 = 201;
+const SYS_DISK_READ: u64 = 202;
+const SYS_DISK_WRITE: u64 = 203;
+const SYS_CPUINFO: u64 = 204;
+const SYS_USB_LIST: u64 = 205;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -1144,6 +1152,99 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
                 }
             } else {
                 set_retval(-1);
+            }
+        }
+
+        // ── Audio & Hardware ───────────────────────────────────────
+
+        SYS_BEEP => {
+            let freq = arg1 as u16;
+            let duration = arg2 as u16;
+            crate::audio::beep(freq, duration);
+            serial_println!("[syscall] beep({} Hz, {} ms)", freq, duration);
+            set_retval(0);
+        }
+
+        SYS_PLAY_TONE => {
+            let freq = arg1 as u32;
+            let duration = arg2 as u32;
+            crate::audio_engine::play_tone(freq, duration);
+            serial_println!("[syscall] play_tone({} Hz, {} ms)", freq, duration);
+            set_retval(0);
+        }
+
+        SYS_DISK_READ => {
+            // disk_read(sector, buf_ptr) → 0 or -1
+            let sector = arg1;
+            let buf_ptr = arg2;
+            if buf_ptr != 0 {
+                let mut tmp = [0u8; 512];
+                match crate::virtio_blk::read_sector(sector, &mut tmp) {
+                    Ok(()) => {
+                        unsafe { write_user_buf(buf_ptr, &tmp, 512) };
+                        serial_println!("[syscall] disk_read(sector {}) ok", sector);
+                        set_retval(512);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] disk_read failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        SYS_DISK_WRITE => {
+            // disk_write(sector, buf_ptr) → 0 or -1
+            let sector = arg1;
+            let buf_ptr = arg2;
+            if buf_ptr != 0 {
+                let data = unsafe { core::slice::from_raw_parts(buf_ptr as *const u8, 512) };
+                let mut tmp = [0u8; 512];
+                tmp.copy_from_slice(data);
+                match crate::virtio_blk::write_sector(sector, &tmp) {
+                    Ok(()) => {
+                        serial_println!("[syscall] disk_write(sector {}) ok", sector);
+                        set_retval(0);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] disk_write failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
+        }
+
+        SYS_CPUINFO => {
+            // cpuinfo(buf_ptr, max_len) → bytes_written
+            let buf_ptr = arg1;
+            let max_len = arg2;
+            let info = crate::smp::cpu_info_string();
+            if buf_ptr != 0 {
+                let n = unsafe { write_user_buf(buf_ptr, info.as_bytes(), max_len) };
+                set_retval(n as i64);
+            } else {
+                serial_println!("[user] {}", info);
+                println!("[user] {}", info);
+                set_retval(info.len() as i64);
+            }
+        }
+
+        SYS_USB_LIST => {
+            // usb_list(buf_ptr, max_len) → bytes_written
+            let buf_ptr = arg1;
+            let max_len = arg2;
+            let info = crate::xhci::info();
+            if buf_ptr != 0 {
+                let n = unsafe { write_user_buf(buf_ptr, info.as_bytes(), max_len) };
+                set_retval(n as i64);
+            } else {
+                serial_println!("[user] {}", info);
+                println!("[user] {}", info);
+                set_retval(info.len() as i64);
             }
         }
 
