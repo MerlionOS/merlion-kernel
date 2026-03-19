@@ -2,7 +2,7 @@
 /// Centralized version string used by neofetch, uname, /proc/version, etc.
 
 pub const NAME: &str = "MerlionOS";
-pub const VERSION: &str = "100.9.0";
+pub const VERSION: &str = "101.0.0";
 pub const CODENAME: &str = "Merlion";
 pub const ARCH: &str = "x86_64";
 pub const SLOGAN: &str = "Born for AI. Built by AI.";
@@ -20,12 +20,12 @@ pub const LICENSE: &str = "MIT";
 
 /// Full version string.
 pub fn full() -> &'static str {
-    concat!("MerlionOS v100.9.0 (", "x86_64", ")")
+    concat!("MerlionOS v101.0.0 (", "x86_64", ")")
 }
 
 /// One-line banner.
 pub fn banner() -> &'static str {
-    "MerlionOS v100.9.0 \u{2014} Born for AI. Built by AI."
+    "MerlionOS v101.0.0 \u{2014} Born for AI. Built by AI."
 }
 
 /// Build info for display.
