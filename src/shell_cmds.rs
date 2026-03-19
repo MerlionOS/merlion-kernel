@@ -1481,6 +1481,11 @@ pub fn dispatch_system(cmd: &str) -> bool {
                 Err(_) => println!("uid=0(root) gid=0(root)"),
             }
         }
+        "sshd" | "sshd start" => {
+            println!("Starting SSH server on port 22...");
+            println!("Connect with: ssh root@<ip> -p 22");
+            crate::task::spawn("sshd", || crate::sshd::sshd_start(22));
+        }
         "who" => {
             print!("{}", crate::multi_user::who());
         }
