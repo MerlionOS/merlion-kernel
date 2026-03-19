@@ -1,5 +1,5 @@
 /// Syscall dispatch (int 0x80).
-/// ABI: rax = syscall number, rdi = arg1, rsi = arg2, rdx = arg3.
+/// ABI: rax = syscall number, rdi = arg1, rsi = arg2, rdx = arg3, r10 = arg4, r8 = arg5.
 ///
 /// Syscalls:
 ///   0 (SYS_WRITE):     write(buf, len) — print to serial+VGA
@@ -229,7 +229,7 @@ unsafe fn write_user_buf(ptr: u64, data: &[u8], max_len: u64) -> usize {
     len
 }
 
-pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
+pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64, _arg4: u64, _arg5: u64) -> i64 {
     // Seccomp filter check
     let pid = task::current_pid();
     match crate::capability::seccomp_check(pid, syscall_num) {

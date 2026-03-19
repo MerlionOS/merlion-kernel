@@ -169,11 +169,17 @@ extern "x86-interrupt" fn keyboard_handler(_stack_frame: InterruptStackFrame) {
 // --- Syscall handler ---
 
 /// Raw trampoline for int 0x80. Saves user registers, calls the Rust
-/// dispatch function with syscall number and arguments, then returns via iretq.
+/// dispatch function with syscall number and 6 arguments, then returns via iretq.
+///
+/// Syscall ABI (matches Linux convention):
+///   rax = syscall number
+///   rdi = arg1, rsi = arg2, rdx = arg3
+///   r10 = arg4, r8  = arg5, r9  = arg6
+///   Return value in rax.
 #[unsafe(naked)]
 extern "C" fn syscall_trampoline() {
     core::arch::naked_asm!(
-        // Save all caller-saved registers we'll clobber
+        // Save all caller-saved registers
         "push rax",
         "push rcx",
         "push rdx",
@@ -184,28 +190,35 @@ extern "C" fn syscall_trampoline() {
         "push r10",
         "push r11",
 
-        // Set up arguments for syscall_dispatch_inner(rax, rdi, rsi, rdx)
-        // Currently: rax is at [rsp+64], rdi at [rsp+0], rsi at [rsp+8], rdx at [rsp+16]
-        // But we pushed them, so we need to read from the stack.
-        // Order pushed: rax, rcx, rdx, rsi, rdi, r8, r9, r10, r11
-        // rsp+0 = r11, rsp+8 = r10, rsp+16 = r9, rsp+24 = r8
+        // Stack layout after pushes:
+        // rsp+0  = r11, rsp+8  = r10, rsp+16 = r9, rsp+24 = r8
         // rsp+32 = rdi, rsp+40 = rsi, rsp+48 = rdx, rsp+56 = rcx, rsp+64 = rax
 
-        // C ABI: arg1=rdi, arg2=rsi, arg3=rdx, arg4=rcx
-        // We want: dispatch(rax, rdi, rsi, rdx)
-        "mov rcx, [rsp+48]",  // arg4 = original rdx
-        "mov rdx, [rsp+40]",  // arg3 = original rsi
-        "mov rsi, [rsp+32]",  // arg2 = original rdi
-        "mov rdi, [rsp+64]",  // arg1 = original rax
+        // C ABI: arg1=rdi, arg2=rsi, arg3=rdx, arg4=rcx, arg5=r8, arg6=r9
+        // We want: dispatch(rax, rdi, rsi, rdx, r10, r8)
+        //
+        // Map user registers to C calling convention:
+        //   C arg1 (rdi) = user rax (syscall number)
+        //   C arg2 (rsi) = user rdi (arg1)
+        //   C arg3 (rdx) = user rsi (arg2)
+        //   C arg4 (rcx) = user rdx (arg3)
+        //   C arg5 (r8)  = user r10 (arg4)
+        //   C arg6 (r9)  = user r8  (arg5)
+
+        "mov r9,  [rsp+24]",  // C arg6 = original r8  (user arg5)
+        "mov r8,  [rsp+8]",   // C arg5 = original r10 (user arg4)
+        "mov rcx, [rsp+48]",  // C arg4 = original rdx (user arg3)
+        "mov rdx, [rsp+40]",  // C arg3 = original rsi (user arg2)
+        "mov rsi, [rsp+32]",  // C arg2 = original rdi (user arg1)
+        "mov rdi, [rsp+64]",  // C arg1 = original rax (syscall number)
 
         // Call the Rust dispatch function (returns i64 in rax)
         "call {dispatch}",
 
-        // Store return value (rax) where the saved rax will be popped from
-        // saved rax is at rsp+64 (9 pushes × 8 bytes, rax was first pushed)
+        // Store return value where saved rax will be restored from
         "mov [rsp+64], rax",
 
-        // Restore registers (rax gets the return value from the stack)
+        // Restore registers (rax gets the return value)
         "pop r11",
         "pop r10",
         "pop r9",
@@ -214,15 +227,17 @@ extern "C" fn syscall_trampoline() {
         "pop rsi",
         "pop rdx",
         "pop rcx",
-        "pop rax",  // ← now contains syscall return value!
+        "pop rax",
 
         "iretq",
         dispatch = sym syscall_dispatch_inner,
     );
 }
 
-/// Rust-callable syscall dispatch. Called by the trampoline with the
-/// original user register values.
-extern "C" fn syscall_dispatch_inner(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
-    crate::syscall::dispatch(syscall_num, arg1, arg2, arg3)
+/// Rust-callable syscall dispatch. Called by the trampoline with 6 arguments.
+extern "C" fn syscall_dispatch_inner(
+    syscall_num: u64, arg1: u64, arg2: u64, arg3: u64,
+    arg4: u64, arg5: u64,
+) -> i64 {
+    crate::syscall::dispatch(syscall_num, arg1, arg2, arg3, arg4, arg5)
 }
