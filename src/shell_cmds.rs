@@ -559,6 +559,27 @@ pub fn dispatch_process(cmd: &str) -> bool {
             println!("Starting init system...");
             crate::init_system::init();
         }
+        cmd if cmd.starts_with("spawn-user ") => {
+            let name = cmd[11..].trim();
+            match crate::userspace::spawn_user_task(name) {
+                Ok(pid) => println!("Spawned user task '{}' pid={}", name, pid),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        "tty-status" => {
+            print!("{}", crate::tty::status());
+        }
+        cmd if cmd.starts_with("shmem-list") => {
+            let regions = crate::shmem::list_shmem();
+            if regions.is_empty() {
+                println!("No shared memory regions.");
+            } else {
+                for r in &regions {
+                    println!("  [{}] {} size={} refs={} owner={}",
+                        r.id, r.name, r.size, r.ref_count, r.owner_pid);
+                }
+            }
+        }
 
         _ => return false,
     }

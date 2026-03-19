@@ -138,6 +138,13 @@ const SYS_DLCLOSE: u64 = 172;
 const SYS_SIGACTION: u64 = 180;
 const SYS_SIGRETURN: u64 = 181;
 
+// Threads & IPC (190-199)
+const SYS_CLONE: u64 = 190;
+const SYS_SHMGET: u64 = 191;
+const SYS_SHMAT: u64 = 192;
+const SYS_SHMDT: u64 = 193;
+const SYS_TTY_READ: u64 = 194;
+
 /// Safely read a string from user memory address.
 fn read_user_str(ptr: u64, len: u64) -> Option<String> {
     if ptr == 0 || len == 0 || len > 4096 {
@@ -972,6 +979,94 @@ pub fn dispatch(syscall_num: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
             let result = crate::dynlink::dlclose(handle);
             serial_println!("[syscall] dlclose({}) = {}", handle, result);
             set_retval(result);
+        }
+
+        // ── Threads & IPC ─────────────────────────────────────────
+
+        SYS_CLONE => {
+            // clone(flags, stack_ptr) → child_tid
+            // Creates a new thread sharing the parent's address space.
+            let _flags = arg1;
+            let stack_ptr = arg2;
+            if let Some(parent_pid) = crate::userspace::current_process() {
+                match crate::userspace::clone_thread(parent_pid, stack_ptr) {
+                    Ok(child_tid) => {
+                        serial_println!("[syscall] clone(stack={:#x}) = tid {}", stack_ptr, child_tid);
+                        set_retval(child_tid as i64);
+                    }
+                    Err(e) => {
+                        serial_println!("[syscall] clone failed: {}", e);
+                        set_retval(-1);
+                    }
+                }
+            } else {
+                serial_println!("[syscall] clone: no user process");
+                set_retval(-1);
+            }
+        }
+
+        SYS_SHMGET => {
+            // shmget(key, size) → shmid
+            let _key = arg1 as u32;
+            let size = arg2 as usize;
+            let owner = if let Some(p) = crate::userspace::current_process() { p as usize } else { 0 };
+            match crate::shmem::create_shmem("user_shm", size, owner) {
+                Some(id) => {
+                    serial_println!("[syscall] shmget(size={}) = {}", size, id);
+                    set_retval(id as i64);
+                }
+                None => {
+                    serial_println!("[syscall] shmget failed");
+                    set_retval(-1);
+                }
+            }
+        }
+
+        SYS_SHMAT => {
+            // shmat(shmid) → addr
+            let shmid = arg1 as usize;
+            let caller = if let Some(p) = crate::userspace::current_process() { p as usize } else { 0 };
+            match crate::shmem::attach_shmem(shmid, caller) {
+                Some(addr) => {
+                    serial_println!("[syscall] shmat({}) = {:#x}", shmid, addr);
+                    set_retval(addr as i64);
+                }
+                None => {
+                    serial_println!("[syscall] shmat({}) failed", shmid);
+                    set_retval(-1);
+                }
+            }
+        }
+
+        SYS_SHMDT => {
+            // shmdt(shmid) → 0
+            let shmid = arg1 as usize;
+            let caller = if let Some(p) = crate::userspace::current_process() { p as usize } else { 0 };
+            crate::shmem::detach_shmem(shmid, caller);
+            serial_println!("[syscall] shmdt({}) — detached", shmid);
+            set_retval(0);
+        }
+
+        SYS_TTY_READ => {
+            // tty_read(buf_ptr, max_len) → bytes_read
+            // Reads from TTY 0 input buffer
+            let buf_ptr = arg1;
+            let max_len = arg2 as usize;
+            if buf_ptr != 0 && max_len > 0 {
+                let mut tmp = alloc::vec![0u8; max_len.min(256)];
+                match crate::tty::tty_read(0, &mut tmp) {
+                    Ok(n) if n > 0 => {
+                        unsafe { write_user_buf(buf_ptr, &tmp[..n], max_len as u64) };
+                        serial_println!("[syscall] tty_read() = {} bytes", n);
+                        set_retval(n as i64);
+                    }
+                    _ => {
+                        set_retval(0); // no data available
+                    }
+                }
+            } else {
+                set_retval(-1);
+            }
         }
 
         _ => {

@@ -1165,6 +1165,73 @@ pub fn waitpid_blocking(wait_pid: u32) -> Result<i32, &'static str> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  THREADS (clone)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Create a new thread sharing the parent's address space.
+/// The thread gets a new PID but shares the same page table, fd table, and brk.
+pub fn clone_thread(parent_pid: u32, stack_ptr: u64) -> Result<u32, &'static str> {
+    let mut table = PROCESS_TABLE.lock();
+    let parent_slot = table.find_by_pid(parent_pid).ok_or("parent not found")?;
+
+    let child_pid = NEXT_PID.fetch_add(1, Ordering::SeqCst);
+    let child_slot = table.find_slot().ok_or("process table full")?;
+
+    let parent = table.slots[parent_slot].as_ref().unwrap();
+    let mut child = UserProcess::new(child_pid, &format!("{}-t{}", parent.name, child_pid));
+    child.parent_pid = parent_pid;
+    child.page_table_phys = parent.page_table_phys; // shared address space
+    child.entry_point = parent.entry_point;
+    child.user_stack_top = if stack_ptr != 0 { stack_ptr } else { parent.user_stack_top - 0x10000 };
+    child.brk = parent.brk;
+    child.state = UserProcessState::Ready;
+
+    // Share fd table
+    for i in 0..MAX_PROC_FDS {
+        child.fd_table[i] = parent.fd_table[i].clone();
+    }
+
+    table.slots[child_slot] = Some(child);
+
+    serial_println!("[userspace] clone: parent {} -> thread {} (stack={:#x})",
+        parent_pid, child_pid, if stack_ptr != 0 { stack_ptr } else { 0 });
+
+    Ok(child_pid)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  USER TASK SPAWNING (preemptive multitasking)
+// ═══════════════════════════════════════════════════════════════════
+
+/// PID of next user program to run as a background task.
+static PENDING_USER_PID: AtomicU32 = AtomicU32::new(0);
+
+/// Entry point for user tasks spawned via spawn_user_task.
+fn user_task_entry() {
+    let pid = PENDING_USER_PID.load(Ordering::SeqCst);
+    if pid != 0 {
+        enter_userspace(pid);
+    }
+}
+
+/// Spawn a user program as a background kernel task.
+/// The program runs preemptively alongside other tasks.
+pub fn spawn_user_task(name: &str) -> Result<u32, &'static str> {
+    let elf_data = get_builtin_program(name).ok_or("unknown program")?;
+    let pid = create_process(name, &elf_data)?;
+    ensure_libc_loaded()?;
+
+    PENDING_USER_PID.store(pid, Ordering::SeqCst);
+    match crate::task::spawn("user_task", user_task_entry as fn()) {
+        Some(tid) => {
+            serial_println!("[userspace] spawned user task '{}' pid={} tid={}", name, pid, tid);
+            Ok(pid)
+        }
+        None => Err("failed to spawn task"),
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  LIBC PAGE LOADING (U5)
 // ═══════════════════════════════════════════════════════════════════
 
