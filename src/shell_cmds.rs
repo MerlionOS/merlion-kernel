@@ -1499,6 +1499,53 @@ pub fn dispatch_system(cmd: &str) -> bool {
             let args = cmd[6..].trim();
             println!("{}", crate::merlion_proxy::handle_command(args));
         }
+        // ── Persistent storage ────────────────────────────────
+        "mount-disk" => {
+            match crate::persist::mount() {
+                Ok(()) => println!("Disk mounted at /disk/"),
+                Err(e) => println!("Mount failed: {}", e),
+            }
+        }
+        "sync" => {
+            match crate::persist::sync() {
+                Ok(n) => println!("Synced {} files to disk", n),
+                Err(e) => println!("Sync failed: {}", e),
+            }
+        }
+        "disk-info" | "diskfs" => {
+            print!("{}", crate::persist::info());
+        }
+        cmd if cmd.starts_with("disk-write ") => {
+            let parts: alloc::vec::Vec<&str> = cmd[11..].splitn(2, ' ').collect();
+            if parts.len() == 2 {
+                let path = alloc::format!("/disk/{}", parts[0]);
+                match crate::persist::write(&path, parts[1]) {
+                    Ok(()) => println!("Written to {} (persistent)", path),
+                    Err(e) => println!("Error: {}", e),
+                }
+            } else {
+                println!("Usage: disk-write <name> <content>");
+            }
+        }
+        cmd if cmd.starts_with("disk-read ") => {
+            let name = cmd[10..].trim();
+            let path = alloc::format!("/disk/{}", name);
+            match crate::persist::read(&path) {
+                Ok(data) => println!("{}", data),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        "disk-ls" => {
+            match crate::vfs::ls("/disk") {
+                Ok(entries) => {
+                    for (name, kind) in &entries {
+                        println!("  {}{}", name, if *kind == 'd' { "/" } else { "" });
+                    }
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+
         "rust-std" | "std-info" => {
             print!("{}", crate::rust_std::info());
         }

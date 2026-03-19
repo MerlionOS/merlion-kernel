@@ -194,6 +194,7 @@ pub mod physics;
 pub mod pkg;
 pub mod pkg_registry;
 pub mod perf_events;
+pub mod persist;
 pub mod power;
 pub mod power_mgmt;
 pub mod posix;
