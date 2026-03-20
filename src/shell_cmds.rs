@@ -1494,6 +1494,12 @@ pub fn dispatch_system(cmd: &str) -> bool {
             let args = cmd[10..].trim();
             println!("{}", crate::oci_runtime::handle_command(args));
         }
+        // ── On-device Rust compiler ──────────────────────────────
+        cmd if cmd.starts_with("rustc ") => {
+            let args = cmd[6..].trim();
+            println!("{}", crate::rustc_mini::handle_command(args));
+        }
+
         // ── MerlionProxy (Envoy-compatible) ──────────────────────
         cmd if cmd.starts_with("proxy ") => {
             let args = cmd[6..].trim();

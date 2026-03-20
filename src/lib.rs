@@ -326,5 +326,6 @@ pub mod ed25519;
 pub mod qfc_miner;
 pub mod self_host;
 pub mod rust_std;
+pub mod rustc_mini;
 pub mod ulibc;
 pub mod userspace;

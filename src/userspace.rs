@@ -538,6 +538,9 @@ const EXEC_TEST_CODE: &[u8] = &[
     b'e', b'x', b'e', b'c', b' ', b'f', b'a', b'i', b'l', b'e', b'd', b'!', b'\n',
 ];
 
+/// Public ELF builder (used by rustc_mini).
+pub fn build_elf64_public(code: &[u8]) -> Vec<u8> { build_elf64(code) }
+
 /// Build a minimal valid ELF64 executable wrapping raw machine code.
 fn build_elf64(code: &[u8]) -> Vec<u8> {
     let ehdr_size: u64 = 64;
